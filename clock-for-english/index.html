@@ -1,0 +1,887 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>Time English Clock · 英语时间表达可视化教学</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style>
+  /* =====================================================================
+   * 设计 Tokens（Memphis，强制）
+   * ===================================================================*/
+  :root {
+    --paper: #f6f1e7;  /* 纸色：页面底色 */
+    --ink:   #161616;  /* 墨黑：文字、描边、黑底块 */
+    --coral: #ff6b6b;  /* 珊瑚红 */
+    --teal:  #2ec4b6;  /* 青绿 */
+    --sun:   #ffd23f;  /* 明黄 */
+    --blue:  #3a86ff;  /* 宝蓝 */
+    --pink:  #ff8fab;  /* 粉 */
+    --card:  #fffdf6;  /* 卡片底 */
+    --dim:   #6d675c;  /* 弱化文字 */
+    --text:  #3c3a33;  /* 正文 */
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { min-height: 100%; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper); color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    overscroll-behavior: none;
+  }
+  /* Memphis 波点纹理（固定层，内容均在其上） */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0;
+    pointer-events: none; opacity: .8;
+    background-image:
+      radial-gradient(#16161680 1px, transparent 1.6px),
+      radial-gradient(#16161650 1px, transparent 1.6px);
+    background-size: 34px 34px, 54px 54px;
+    background-position: 0 0, 17px 27px;
+  }
+
+  /* ===================== 顶部滚动字幕 ===================== */
+  .marquee {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    background: var(--ink); color: var(--sun); overflow: hidden;
+    font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase;
+    padding: 9px 0; padding-top: calc(9px + env(safe-area-inset-top, 0));
+  }
+  .marquee .in { display: inline-block; white-space: nowrap; animation: mq 22s linear infinite; }
+  @keyframes mq { to { transform: translateX(-50%); } }
+
+  /* ===================== Hero 标题区 ===================== */
+  .hero {
+    position: relative; overflow: hidden;
+    padding: calc(64px + env(safe-area-inset-top, 0)) 16px 14px;
+    text-align: center;
+  }
+  .hero .head { position: relative; z-index: 6; pointer-events: none; }
+  .hero h1 {
+    display: inline-block;
+    font-size: clamp(34px, 7.5vw, 64px);
+    font-weight: 900; letter-spacing: -.01em; line-height: .95;
+    color: var(--paper);
+    text-shadow: 3px 3px 0 var(--ink), 6px 6px 0 var(--coral);
+    pointer-events: none;
+  }
+  .hero h1 .pop { color: var(--sun); text-shadow: 3px 3px 0 var(--ink), 6px 6px 0 var(--blue); }
+  .hero .subline {
+    position: relative; z-index: 6;
+    margin-top: 20px; font-size: clamp(13px, 3vw, 15px);
+    color: var(--text); line-height: 1.7; pointer-events: none;
+  }
+  .badge {
+    position: relative; z-index: 6;
+    display: inline-block; margin-top: 20px;
+    font-size: clamp(11px, 2.6vw, 13px); font-weight: 700;
+    letter-spacing: .3em; text-transform: uppercase;
+    background: var(--ink); color: var(--paper);
+    padding: 10px 20px; transform: rotate(-2deg);
+  }
+
+  /* 散落 Memphis 图形：点按换色 + 旋转 */
+  .sh {
+    position: absolute; z-index: 5; cursor: pointer;
+    touch-action: manipulation; will-change: transform;
+    transition: transform .35s cubic-bezier(.3, 1.6, .5, 1), rotate .35s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  @media (hover: hover) { .sh:hover { transform: scale(1.12); } }
+  .sh:active { transform: scale(.94); }
+  .sh svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+  /* ===================== 主内容区 ===================== */
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 1120px; margin: 0 auto;
+    padding: 10px clamp(12px, 3vw, 32px) 40px;
+  }
+  .section-head {
+    text-align: center; margin: 26px 0 clamp(24px, 4vw, 34px);
+  }
+  .section-head h2 {
+    display: inline-block; transform: rotate(-1.5deg);
+    background: var(--ink); color: var(--paper);
+    font-size: clamp(14px, 3vw, 18px); font-weight: 900;
+    letter-spacing: .3em; text-transform: uppercase;
+    padding: 12px 22px;
+  }
+  .section-head h2 b { color: var(--sun); }
+
+  .layout {
+    display: flex; gap: clamp(22px, 4vw, 40px);
+    flex-wrap: wrap; justify-content: center; align-items: flex-start;
+  }
+
+  /* 钟面容器：贴纸风格，但保留触摸绘制 */
+  .clock-card {
+    position: relative; background: var(--card);
+    border: 3px solid var(--ink); border-radius: 24px;
+    box-shadow: 8px 8px 0 var(--blue);
+    padding: clamp(14px, 3vw, 22px);
+    transform: rotate(-1deg);
+    touch-action: none;
+  }
+  #sketch canvas { display: block; touch-action: none; }
+  .clock-tip {
+    margin-top: 10px; text-align: center;
+    font-size: 11px; font-weight: 700; letter-spacing: .2em;
+    text-transform: uppercase; color: var(--dim);
+  }
+
+  /* 面板 */
+  .panel {
+    flex: 1 1 340px; min-width: 0; max-width: 460px;
+    display: flex; flex-direction: column; gap: clamp(16px, 3vw, 20px);
+  }
+  .card {
+    position: relative; background: var(--card); color: var(--ink);
+    border: 3px solid var(--ink); border-radius: 18px;
+    box-shadow: 6px 6px 0 var(--c, var(--sun));
+    padding: clamp(16px, 3vw, 22px);
+    transform: rotate(var(--tilt, 0deg));
+    touch-action: manipulation;
+    transition: transform .28s cubic-bezier(.3, 1.6, .5, 1), box-shadow .28s;
+    animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) both;
+    animation-delay: var(--d, 0s);
+  }
+  @media (hover: hover) {
+    .card:hover { transform: rotate(0deg) translateY(-4px); box-shadow: 8px 10px 0 var(--c, var(--sun)); }
+  }
+  .card:active { transform: rotate(var(--tilt, 0deg)) scale(.98); }
+  .card:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+  @keyframes pop {
+    from { opacity: 0; transform: rotate(var(--tilt, 0deg)) translateY(26px) scale(.96); }
+  }
+  .card-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  }
+  .card-head .dot {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--c, var(--sun)); border: 2px solid var(--ink);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 900;
+  }
+  .card-head h3 {
+    font-size: clamp(12px, 2.8vw, 14px); font-weight: 900;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--ink);
+  }
+
+  /* 英文表达语块（贴纸 chips） */
+  .expr {
+    display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline;
+    min-height: 64px;
+  }
+  .chunk {
+    display: inline-block; position: relative; cursor: pointer;
+    background: var(--card); border: 2px solid var(--ink); border-radius: 12px;
+    box-shadow: 3px 3px 0 var(--chunkc, var(--ink));
+    padding: 5px 12px;
+    font-size: clamp(18px, 4vw, 24px); font-weight: 800; line-height: 1;
+    color: var(--chunkc, var(--ink));
+    transform: rotate(var(--chunktilt, 0deg));
+    user-select: none; touch-action: manipulation;
+    transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), box-shadow .25s;
+  }
+  @media (hover: hover) {
+    .chunk:hover { transform: rotate(0deg) translateY(-3px); box-shadow: 5px 6px 0 var(--chunkc, var(--ink)); }
+  }
+  .chunk:active { transform: rotate(var(--chunktilt, 0deg)) scale(.95); }
+  .chunk:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+  .chunk.active {
+    box-shadow: 0 0 0 3px var(--ink), 3px 3px 0 var(--chunkc, var(--ink));
+  }
+  .chunk .type-tag {
+    display: block; font-size: 9px; font-weight: 700; text-align: center;
+    letter-spacing: .12em; margin-top: 3px; opacity: .7; text-transform: uppercase;
+  }
+  .chunk-locked {
+    font-size: 14px; color: var(--dim); line-height: 1.6;
+  }
+
+  /* 顺读法数字钟 */
+  .digital {
+    font-family: "SF Mono", "Consolas", monospace;
+    font-size: clamp(28px, 7vw, 36px); font-weight: 900;
+    letter-spacing: 2px; color: var(--ink);
+    display: flex; align-items: baseline; flex-wrap: wrap; gap: 10px;
+  }
+  .digital .d-h { color: var(--blue); }
+  .digital .d-m { color: var(--coral); }
+  .digital .d-text { font-size: clamp(13px, 3vw, 16px); color: var(--dim); font-family: inherit; font-weight: 700; }
+
+  /* 规则提示条 */
+  #hint {
+    background: var(--paper);
+    border: 2px dashed var(--ink); border-radius: 12px;
+    border-left: 6px solid var(--c, var(--sun));
+    padding: 12px 16px; font-size: clamp(14px, 3vw, 15px); line-height: 1.7; color: var(--text);
+  }
+  #hint b { color: var(--ink); background: var(--sun); padding: 0 4px; }
+
+  /* 控制区 */
+  .controls { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+  select, button {
+    font-family: inherit; font-weight: 800; font-size: 14px;
+    background: var(--card); color: var(--ink);
+    border: 2px solid var(--ink); border-radius: 12px;
+    padding: 9px 14px; cursor: pointer;
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), box-shadow .2s, background .2s;
+    touch-action: manipulation;
+  }
+  @media (hover: hover) { select:hover, button:hover { transform: translateY(-2px); box-shadow: 4px 5px 0 var(--ink); } }
+  select:active, button:active { transform: translateY(1px); box-shadow: 1px 1px 0 var(--ink); }
+  select:focus-visible, button:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+  button.speak { background: var(--teal); color: var(--ink); }
+  button.speak:active { box-shadow: 1px 1px 0 var(--ink); }
+  .night-toggle { background: var(--pink); color: var(--ink); }
+  .night-toggle.on { background: var(--blue); color: var(--paper); }
+  .rate-box {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 12px; font-weight: 700; letter-spacing: .1em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  input[type=range] { accent-color: var(--blue); }
+  .level-desc { font-size: 12.5px; color: var(--dim); margin-top: 12px; line-height: 1.6; }
+
+  /* ===================== 页脚 ===================== */
+  .foot {
+    position: relative; z-index: 1;
+    max-width: 1120px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border-top: 3px solid var(--ink);
+    padding: 20px clamp(16px, 4vw, 40px) calc(26px + env(safe-area-inset-bottom, 0));
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+    text-transform: uppercase; color: var(--dim);
+  }
+  .foot .fin {
+    font-size: 11px; color: var(--ink); letter-spacing: .25em;
+    background: var(--sun); border: 2px solid var(--ink);
+    padding: 5px 12px; transform: rotate(-2deg);
+  }
+  @media (max-width: 640px) { .foot .r { display: none; } }
+
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .marquee .in { animation: none; }
+    .sh, .card, .chunk, select, button { transition: none; animation: none; }
+  }
+</style>
+</head>
+<body>
+  <div class="marquee" aria-hidden="true"><div class="in" id="mq"></div></div>
+
+  <header class="hero">
+    <div class="head">
+      <h1>TIME<br><span class="pop">ENGLISH</span></h1>
+      <p class="badge">拖动指针 · 看见规则 · 说出时间</p>
+      <p class="subline">单击短语中的单词，可反向高亮钟面对应部分。</p>
+    </div>
+    <div class="sh-slot"></div>
+  </header>
+
+  <main class="wrap">
+    <div class="section-head">
+      <h2>可视时钟 <b>· 边玩边学</b></h2>
+    </div>
+
+    <div class="layout">
+      <div class="clock-card">
+        <div id="sketch"></div>
+        <p class="clock-tip">在钟面环形区拖动分针</p>
+      </div>
+
+      <div class="panel">
+        <div class="card" style="--c:var(--coral);--tilt:-1.2deg;--d:.05s">
+          <div class="card-head"><span class="dot">①</span><h3>当前英文表达</h3></div>
+          <div class="expr" id="expr"></div>
+        </div>
+
+        <div class="card" style="--c:var(--sun);--tilt:1.2deg;--d:.13s">
+          <div class="card-head"><span class="dot">②</span><h3>顺读法</h3></div>
+          <div class="digital" id="digital"></div>
+        </div>
+
+        <div class="card" style="--c:var(--teal);--tilt:-1.2deg;--d:.21s">
+          <div class="card-head"><span class="dot">③</span><h3>规则提示</h3></div>
+          <div id="hint">拨动分针试试看 👆</div>
+        </div>
+
+        <div class="card" style="--c:var(--blue);--tilt:1.2deg;--d:.29s">
+          <div class="card-head"><span class="dot">④</span><h3>控制</h3></div>
+          <div class="controls">
+            <select id="level">
+              <option value="1">Level 1 · 整点 o'clock</option>
+              <option value="2">Level 2 · + 过几分 past</option>
+              <option value="3">Level 3 · + half / a quarter</option>
+              <option value="4">Level 4 · + 差几分 to</option>
+              <option value="5">Level 5 · + a.m. / p.m.</option>
+              <option value="6" selected>Level 6 · 全部规则</option>
+            </select>
+            <button id="speakBtn" class="speak">🔊 跟读</button>
+            <button id="nightBtn" class="night-toggle">☀️ / 🌙</button>
+            <label class="rate-box">语速 <input type="range" id="rate" min="0.5" max="1" step="0.1" value="0.8"></label>
+          </div>
+          <div class="level-desc" id="levelDesc"></div>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer class="foot">
+    <span>fun apps society · est. 2026</span>
+    <span class="fin">say it out loud</span>
+    <span class="r">memphis vibes · 双击即玩 · nº 08</span>
+  </footer>
+
+<script>
+/* =====================================================================
+ * 色彩语义表（全局唯一 —— 钟面与短语共用同一套 Memphis 语义）
+ * 宝蓝 = 小时 | 明黄 = 特殊分钟 | 青绿 = past | 珊瑚 = to | 墨灰 = 结构词
+ * ===================================================================*/
+const C = {
+  hour:  [58,134,255],   // --blue
+  min:   [250,196,40],   // 深明黄（浅底可读）
+  past:  [46,196,182],   // --teal
+  to:    [255,107,107],  // --coral
+  struct:[109,103,92],   // --dim
+  face:  [255,253,246],  // --card 钟面
+  faceN: [24,34,66],     // 夜间钟面（深藏青）
+  paper: [246,241,231],  // --paper
+  ink:   [22,22,22],     // --ink
+  moon:  [236,240,245]
+};
+
+/* 语块颜色 hex（贴纸阴影 / 文字） */
+const KIND_HEX = {
+  hour:  '#3a86ff',
+  min:   '#ffd23f',
+  spec:  '#ffd23f',
+  past:  '#2ec4b6',
+  to:    '#ff6b6b',
+  struct:'#6d675c'
+};
+
+/* =====================================================================
+ * 全局状态
+ * ===================================================================*/
+const S = {
+  hour: 3, minute: 40,        // 初始时刻 3:40
+  isPM: false,
+  level: 6,
+  dragging: false,           // 拖动静默模式标志
+  settleTimer: null,         // 300ms 防抖
+  teachFlash: {kind:null, t:0},   // 落定后的教学闪烁
+  bubble: null,              // 换算气泡 {text, t}
+  hourFlash: {num:null, t:0},// 下一小时数字高亮
+  reverseFlash: null         // 反向点击闪烁 {kind, t}
+};
+
+/* =====================================================================
+ * 规则引擎：分针区间 → 时间类型 + 语块序列
+ * ===================================================================*/
+function detectType(min){
+  if (min === 0)  return "oclock";
+  if (min === 30) return "half";
+  if (min === 15) return "qpast";
+  if (min === 45) return "qto";
+  if (min < 30)   return "past";
+  return "to";
+}
+
+const RULES = {
+  oclock:{ label:"整点", template:h=>[
+    {text:numWord(h), kind:"hour", tag:"hour"},
+    {text:"o'clock", kind:"struct", tag:"o'clock"} ]},
+  past:{ label:"过几分", template:(h,m)=>[
+    {text:numWord(m), kind:"min", tag:"minute"},
+    {text:"past", kind:"past", tag:"past"},
+    {text:numWord(h), kind:"hour", tag:"hour"} ]},
+  half:{ label:"半点", template:h=>[
+    {text:"half", kind:"spec", tag:"half"},
+    {text:"past", kind:"past", tag:"past"},
+    {text:numWord(h), kind:"hour", tag:"hour"} ]},
+  qpast:{ label:"一刻过", template:h=>[
+    {text:"a quarter", kind:"spec", tag:"quarter"},
+    {text:"past", kind:"past", tag:"past"},
+    {text:numWord(h), kind:"hour", tag:"hour"} ]},
+  qto:{ label:"一刻差", template:h=>[
+    {text:"a quarter", kind:"spec", tag:"quarter"},
+    {text:"to", kind:"to", tag:"to"},
+    {text:numWord(h%12+1), kind:"hour", tag:"next-hour"} ]},
+  to:{ label:"差几分", template:(h,m)=>[
+    {text:numWord(60-m), kind:"min", tag:"minute"},
+    {text:"to", kind:"to", tag:"to"},
+    {text:numWord(h%12+1), kind:"hour", tag:"next-hour"} ]},
+};
+
+/* 数字 → 英文单词 */
+function numWord(n){
+  const ones=["zero","one","two","three","four","five","six","seven","eight","nine",
+    "ten","eleven","twelve","thirteen","fourteen","fifteen","sixteen","seventeen",
+    "eighteen","nineteen"];
+  const tens={20:"twenty",30:"thirty",40:"forty",50:"fifty"};
+  if(n<20) return ones[n];
+  const t=tens[Math.floor(n/10)*10], o=n%10;
+  return o? `${t}-${ones[o]}` : t;
+}
+
+const UNLOCK = {oclock:1, past:2, half:3, qpast:3, qto:4, to:4};
+const LEVEL_DESC = {
+  1:"只学整点表达。拨到非整点时仅显示顺读法。",
+  2:"解锁 past：青绿扇形显示已走过的分钟。",
+  3:"解锁 half / a quarter 的特殊表达。",
+  4:"解锁 to：珊瑚扇形 + 换算气泡（最难的一关！）",
+  5:"解锁 a.m. / p.m.（用右上角切换昼夜）",
+  6:"全部规则同时可用，可对比多种说法。"
+};
+
+/* =====================================================================
+ * DOM 渲染
+ * ===================================================================*/
+function renderPanel(){
+  const exprEl = document.getElementById("expr");
+  const type = detectType(S.minute);
+  const unlocked = UNLOCK[type] <= S.level;
+  exprEl.innerHTML = "";
+
+  if (unlocked){
+    const chunks = RULES[type].template(S.hour, S.minute);
+    if (S.level>=5){
+      chunks.push({text:S.isPM?"p.m.":"a.m.", kind:"struct", tag:"ampm"});
+    }
+    chunks.forEach((c,i)=>{
+      const span=document.createElement("span");
+      span.className=`chunk k-${c.kind}`;
+      span.style.setProperty('--chunkc', KIND_HEX[c.kind]);
+      span.style.setProperty('--chunktilt', (i%2?0.8:-0.8)+'deg');
+      span.tabIndex=0;
+      span.innerHTML=`${c.text}<span class="type-tag">${c.tag}</span>`;
+      // 反向联动
+      span.onclick=()=>{ S.reverseFlash={kind:c.kind, tag:c.tag, t:60}; };
+      span.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); span.onclick(); } };
+      exprEl.appendChild(span);
+    });
+  } else {
+    exprEl.innerHTML=`<span class="chunk-locked">
+      🔒 当前关卡未解锁此表达（${RULES[type].label}）</span>`;
+  }
+
+  const ampm = S.level>=5 ? (S.isPM?" PM":" AM") : "";
+  document.getElementById("digital").innerHTML =
+    `<span class="d-h">${S.hour}</span>:<span class="d-m">${String(S.minute).padStart(2,"0")}</span>`+
+    `<span class="d-text">${ampm} · "${numWord(S.hour)} ${numWord(S.minute)}"</span>`;
+
+  renderHint(type, unlocked);
+}
+
+function renderHint(type, unlocked){
+  const hint=document.getElementById("hint");
+  const h=S.hour, m=S.minute, nextH=h%12+1;
+  const map={
+    oclock:`<b>整点</b> · 数字 + o'clock —— o'clock 只用于整点。例：${numWord(h)} o'clock`,
+    past:`<b>过几分</b> · 分钟 + past + 小时 —— past = 已经过去（青绿扇形）。例：${numWord(m)} past ${numWord(h)}`,
+    half:`<b>半点</b> · half past + 小时 —— half = 钟面的一半（右半圆已填满）。不能说 thirty past！`,
+    qpast:`<b>一刻过</b> · a quarter past + 小时 —— a quarter = 钟面的四分之一（右上象限）。`,
+    qto:`<b>一刻差</b> · a quarter to + <b>下一小时</b> —— 注意小时要 +1！现在是 ${h} 点差一刻，要说 ${numWord(nextH)}！`,
+    to:`<b>差几分</b> · (60−分钟) + to + <b>下一小时</b> —— 三个要点：①逆算 60−${m}=${60-m} ②to 表示"还差" ③小时进位到 ${numWord(nextH)}。`,
+  };
+  hint.innerHTML = unlocked ? map[type]
+    : `🔒 当前是 Level ${S.level}，此规则（<b>${RULES[type].label}</b>）尚未解锁。可查看下方顺读法。`;
+}
+
+/* =====================================================================
+ * p5.js 钟面绘制
+ * ===================================================================*/
+let R, CX, CY;
+let numbers=[];
+const SIZE=440;
+
+function recompute(){
+  CX=width/2; CY=height/2;
+  R=Math.round(width*0.41);
+  numbers=[];
+  for(let i=0;i<12;i++){
+    const a=TWO_PI*(i/12)-HALF_PI;
+    numbers.push({n:i===0?12:i, x:CX+cos(a)*(R-35), y:CY+sin(a)*(R-35)});
+  }
+}
+
+function setup(){
+  p5.disableFriendlyErrors = true;
+  const side=Math.min(SIZE, windowWidth-40, windowHeight-180);
+  const cv=createCanvas(side, side);
+  cv.parent("sketch");
+  recompute();
+  renderPanel();
+}
+
+function windowResized(){
+  const side=Math.min(SIZE, windowWidth-40, windowHeight-180);
+  resizeCanvas(side, side);
+  recompute();
+}
+
+function draw(){
+  const night = S.isPM && S.level>=5;
+  const bg = night? [18,24,48] : C.paper;
+  background(bg[0],bg[1],bg[2]);
+
+  drawSectors();
+  drawBoundaryLine();
+  drawFace();
+  drawAnchors();
+  drawHands();
+  drawTeachEffects();
+  drawBubble();
+
+  // 衰减反向闪烁
+  if (S.reverseFlash && S.reverseFlash.t > 0) S.reverseFlash.t--;
+}
+
+/* 分区可视化 */
+function sector(fromMin,toMin,col,alpha){
+  const a1=TWO_PI*(fromMin/60)-HALF_PI, a2=TWO_PI*(toMin/60)-HALF_PI;
+  fill(col[0],col[1],col[2],alpha); noStroke();
+  arc(CX,CY,R-10,R-10,a1,a2,PIE);
+}
+
+function drawSectors(){
+  const m=S.minute, type=detectType(m);
+  const unlocked = UNLOCK[type] <= S.level;
+  if(!unlocked) return;
+
+  // 反向闪烁增强
+  let boost=0;
+  if (S.reverseFlash && S.reverseFlash.t>0){
+    boost = 60*Math.abs(sin(S.reverseFlash.t*0.2));
+  }
+
+  if (type==="past"||type==="half"||type==="qpast"){
+    sector(0, m===30?30:m, C.past, 70+boost);
+  } else if (type==="oclock") {
+    // 整点光环在 teachEffects 处理
+  } else {
+    // to, qto
+    sector(m, 60, C.to, 75+boost);
+    sector(0, m, [109,103,92], 26); // 灰色已走过弧
+  }
+}
+
+/* 12-6 分界虚线 */
+function drawBoundaryLine(){
+  stroke(C.ink[0],C.ink[1],C.ink[2],40); strokeWeight(1); drawingContext.setLineDash([4,6]);
+  line(CX, CY-R+10, CX, CY+R-10);
+  drawingContext.setLineDash([]);
+}
+
+/* 钟面与刻度 */
+function drawFace(){
+  const night = S.isPM && S.level>=5;
+  const faceCol = night? C.faceN : C.face;
+  const tickCol = night? C.moon : C.ink;
+  const numCol  = night? C.moon : C.ink;
+
+  // 钟面底
+  fill(faceCol[0],faceCol[1],faceCol[2]);
+  stroke(C.ink[0],C.ink[1],C.ink[2]); strokeWeight(3);
+  circle(CX,CY,(R-8)*2);
+
+  // 分钟刻度
+  for(let i=0;i<60;i+=5){
+    const a=TWO_PI*(i/60)-HALF_PI;
+    const r1=R-4, r2=R-16;
+    stroke(tickCol[0],tickCol[1],tickCol[2],100); strokeWeight(i%15===0?4:2);
+    line(CX+cos(a)*r1,CY+sin(a)*r1, CX+cos(a)*r2,CY+sin(a)*r2);
+  }
+
+  // 小时数字（下一小时高亮）
+  numbers.forEach(nb=>{
+    const isNext = (S.hourFlash.num===nb.n && S.hourFlash.t>0);
+    if(isNext) S.hourFlash.t--;
+
+    let isReverse = false;
+    if(S.reverseFlash && S.reverseFlash.kind==='hour' && S.reverseFlash.t>0) {
+        isReverse = true;
+    }
+
+    const sc = isNext ? 1.4+0.1*sin(frameCount*0.3) : 1;
+    push();
+    translate(nb.x,nb.y);
+    scale(sc);
+    fill(isNext||isReverse ? C.hour : numCol);
+    noStroke();
+    textAlign(CENTER,CENTER);
+    textSize(22);
+    textStyle(isNext?BOLD:NORMAL);
+    text(nb.n,0,0);
+    pop();
+  });
+}
+
+/* half / quarter 锚点图标 */
+function drawAnchors(){
+  const type=detectType(S.minute);
+  const anchor=(minPos,icon,col)=>{
+    const a=TWO_PI*(minPos/60)-HALF_PI;
+    const x=CX+cos(a)*(R-45), y=CY+sin(a)*(R-45);
+    fill(col[0],col[1],col[2]); noStroke(); ellipse(x,y,22,22);
+    fill(C.ink[0],C.ink[1],C.ink[2]); textAlign(CENTER,CENTER); textSize(11);
+    text(icon,x,y);
+  };
+  if(S.level>=3 && type==="half") anchor(30,"½",C.min);
+  if(S.level>=3 && type==="qpast") anchor(15,"¼",C.min);
+  if(S.level>=4 && type==="qto") anchor(45,"¼",C.to);
+}
+
+/* 指针（时针按分钟连续漂移） */
+function drawHands(){
+  const night = S.isPM && S.level>=5;
+  const mA=TWO_PI*(S.minute/60)-HALF_PI;
+  const hA=TWO_PI*(((S.hour%12)+S.minute/60)/12)-HALF_PI;
+
+  // 分针
+  let mColor = night? C.moon : C.ink;
+  if(S.reverseFlash && S.reverseFlash.kind==='min' && S.reverseFlash.t>0) mColor = C.min;
+  stroke(mColor[0],mColor[1],mColor[2]); strokeWeight(4); strokeCap(ROUND);
+  line(CX,CY, CX+cos(mA)*(R-25), CY+sin(mA)*(R-25));
+
+  // 拖拽热区提示
+  if(S.dragging){
+    noStroke(); fill(C.ink[0],C.ink[1],C.ink[2],70);
+    circle(CX+cos(mA)*(R-25), CY+sin(mA)*(R-25), 30);
+  }
+
+  // 时针
+  let hColor = C.hour;
+  if(S.reverseFlash && S.reverseFlash.kind==='hour' && S.reverseFlash.t>0) hColor = [58,134,255];
+  stroke(hColor[0],hColor[1],hColor[2]); strokeWeight(6);
+  line(CX,CY, CX+cos(hA)*(R-65), CY+sin(hA)*(R-65));
+
+  // 中心点
+  fill(C.ink[0],C.ink[1],C.ink[2]); noStroke(); circle(CX,CY,12);
+}
+
+/* 落定后的教学动作 */
+function drawTeachEffects(){
+  const type=detectType(S.minute);
+
+  // 整点：外圈脉冲光环
+  if(S.teachFlash.kind==="oclock" && S.teachFlash.t>0){
+    S.teachFlash.t--;
+    const p=1-S.teachFlash.t/30;
+    noFill(); stroke(C.ink[0],C.ink[1],C.ink[2],220*(1-p)); strokeWeight(4*(1-p)+1);
+    circle(CX,CY,(R-8)*(1+p*0.15));
+  }
+
+  // past/to 扇形呼吸闪烁
+  if(S.teachFlash.kind==="sector" && S.teachFlash.t>0){
+    S.teachFlash.t--;
+    const alpha=80*Math.abs(sin(S.teachFlash.t*0.25));
+    if(type==="to"||type==="qto") sector(S.minute,60,C.to,alpha);
+    else if(type==="past"||type==="qpast") sector(0,S.minute||15,C.past,alpha);
+    else if(type==="half") sector(0,30,C.past,alpha);
+  }
+}
+
+/* to 区间换算气泡 */
+function drawBubble(){
+  if(!S.bubble) return;
+  S.bubble.t--;
+  if(S.bubble.t<=0){ S.bubble=null; return; }
+
+  const a=TWO_PI*(S.minute/60)-HALF_PI;
+  const bx=CX+cos(a)*(R-95), by=CY+sin(a)*(R-95);
+
+  push();
+  translate(bx,by);
+  fill(24,34,66,240); stroke(C.min[0],C.min[1],C.min[2]); strokeWeight(2);
+  rectMode(CENTER); rect(0,0,150,38,9);
+  noStroke(); fill(C.moon[0],C.moon[1],C.moon[2]); textAlign(CENTER,CENTER); textSize(14);
+  text(S.bubble.text,0,0);
+  pop();
+}
+
+/* =====================================================================
+ * 交互：拖拽与防抖
+ * ===================================================================*/
+function touchOrMousePos(){
+  if(mouseIsPressed) return {x:mouseX,y:mouseY};
+  if(touches.length) return {x:touches[0].x,y:touches[0].y};
+  return null;
+}
+
+function posToMinute(x,y){
+  let a=atan2(y-CY,x-CX)+HALF_PI;
+  if(a<0) a+=TWO_PI;
+  return round((a/TWO_PI)*60/5)*5 % 60; // 吸附到 5 分钟
+}
+
+function tryDrag(){
+  const p=touchOrMousePos();
+  if(!p) return;
+  const d=dist(p.x,p.y,CX,CY);
+  if(d>R*0.3 && d<R*1.1){ // 环形拖拽热区
+    const newMin=posToMinute(p.x,p.y);
+    if(newMin!==S.minute){
+      S.minute=newMin;
+      onTimeChanged();
+    }
+  }
+}
+
+function touchStarted(){ tryDrag(); return false; }
+function touchMoved(){ if(S.dragging||touches.length){S.dragging=true; tryDrag();} return false; }
+function touchEnded(){ endDrag(); }
+function mousePressed(){ tryDrag(); }
+function mouseDragged(){ S.dragging=true; tryDrag(); }
+function mouseReleased(){ endDrag(); }
+
+function endDrag(){
+  if(!S.dragging) return;
+  S.dragging=false;
+  scheduleTeach();
+}
+
+/* 拖动中：静默刷新 */
+function onTimeChanged(){
+  renderPanel();
+  if(S.settleTimer) clearTimeout(S.settleTimer);
+  S.bubble=null;
+  S.teachFlash.t=0;
+}
+
+/* 松手落定 300ms 后：触发教学动作 */
+function scheduleTeach(){
+  if(S.settleTimer) clearTimeout(S.settleTimer);
+  S.settleTimer=setTimeout(()=>{
+    const type=detectType(S.minute);
+    const unlocked = UNLOCK[type]<=S.level;
+    if(!unlocked) return;
+
+    if(type==="oclock") S.teachFlash={kind:"oclock",t:30};
+    else S.teachFlash={kind:"sector",t:50};
+
+    if(type==="to"||type==="qto"){
+      S.bubble={text:`60 − ${S.minute} = ${60-S.minute}`, t:120};
+      S.hourFlash={num:S.hour%12+1, t:120};
+    }
+    if(type==="half"){
+      S.bubble={text:"half = 30 min", t:120};
+    }
+    if(type==="qpast"){
+      S.bubble={text:"a quarter = 15 min", t:120};
+    }
+
+    activateChunksSequentially();
+  },300);
+}
+
+/* 语块依次点亮动画 */
+function activateChunksSequentially(){
+  const chunks=[...document.querySelectorAll("#expr .chunk")];
+  chunks.forEach(c=>c.classList.remove("active"));
+  chunks.forEach((c,i)=>{
+    setTimeout(()=>{ c.classList.add("active"); }, 250*i+100);
+    setTimeout(()=>{ c.classList.remove("active"); }, 250*i+1800);
+  });
+}
+
+/* =====================================================================
+ * 控制区事件
+ * ===================================================================*/
+document.getElementById("level").onchange=e=>{
+  S.level=+e.target.value;
+  document.getElementById("levelDesc").textContent=LEVEL_DESC[S.level];
+  renderPanel();
+};
+document.getElementById("levelDesc").textContent=LEVEL_DESC[6];
+
+document.getElementById("nightBtn").onclick=e=>{
+  S.isPM=!S.isPM;
+  e.target.classList.toggle("on",S.isPM);
+  renderPanel();
+};
+
+document.getElementById("speakBtn").onclick=()=>{
+  const type=detectType(S.minute);
+  let text;
+  if(UNLOCK[type]<=S.level){
+    text=RULES[type].template(S.hour,S.minute).map(c=>c.text).join(" ");
+    if(S.level>=5) text+=S.isPM?" P M":" A M";
+  } else {
+    text=`${numWord(S.hour)} ${numWord(S.minute)}`;
+  }
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang="en-GB"; u.rate=+document.getElementById("rate").value;
+  speechSynthesis.cancel(); speechSynthesis.speak(u);
+};
+
+/* =====================================================================
+ * 散落 Memphis 图形（点按换色）
+ * ===================================================================*/
+(function(){
+  var COLS=['#ff6b6b','#2ec4b6','#ffd23f','#3a86ff','#ff8fab'];
+  var DEFS=[
+    function(c){ return {w:150,h:60,html:'<svg viewBox="0 0 150 60"><path d="M6 40 Q 22 8, 40 34 T 76 32 T 112 30 T 146 26" fill="none" stroke="'+c+'" stroke-width="11" stroke-linecap="round"/></svg>'}; },
+    function(c){ return {w:90,h:82,html:'<svg viewBox="0 0 90 82"><polygon points="45,4 88,78 2,78" fill="'+c+'"/></svg>'}; },
+    function(c){ return {w:96,h:96,html:'<svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="42" fill="'+c+'"/><circle cx="48" cy="48" r="24" fill="none" stroke="#f6f1e7" stroke-width="6" stroke-dasharray="2 12" stroke-linecap="round"/></svg>'}; },
+    function(c){ return {w:120,h:62,html:'<svg viewBox="0 0 120 62"><path d="M2 60 A 58 58 0 0 1 118 60 Z" fill="'+c+'"/></svg>'}; },
+    function(c){ return {w:160,h:44,html:'<svg viewBox="0 0 160 44"><polyline points="6,34 30,8 54,34 78,8 102,34 126,8 150,34" fill="none" stroke="'+c+'" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>'}; },
+    function(c){ return {w:130,h:56,html:'<svg viewBox="0 0 130 56"><rect x="4" y="4" width="122" height="48" rx="24" fill="'+c+'"/><g stroke="#f6f1e7" stroke-width="7" stroke-linecap="round"><path d="M42 12 L28 44"/><path d="M70 12 L56 44"/><path d="M98 12 L84 44"/></g></svg>'}; },
+    function(c){ return {w:120,h:66,html:'<svg viewBox="0 0 120 66"><path d="M6 62 A 54 54 0 0 1 114 62" fill="none" stroke="'+c+'" stroke-width="10"/><path d="M28 62 A 32 32 0 0 1 92 62" fill="none" stroke="#161616" stroke-width="8"/></svg>'}; }
+  ];
+  var SPOTS=[[6,12,-6],[86,10,8],[10,70,5],[90,62,-5],[72,84,-8],[28,88,6]];
+  var hero=document.querySelector('.hero .sh-slot');
+
+  function buildShapes(){
+    Array.prototype.forEach.call(hero.querySelectorAll('.sh'),function(e){e.remove();});
+    var w=window.innerWidth;
+    var s= w<640?0.6:0.8;
+    var n= w<520?4:SPOTS.length;
+    SPOTS.slice(0,n).forEach(function(sp,i){
+      var di=i%DEFS.length, ci=i%5;
+      var d=DEFS[di](COLS[ci]);
+      var el=document.createElement('div');
+      el.className='sh';
+      el.style.left=sp[0]+'%';
+      el.style.top=sp[1]+'%';
+      el.style.width=(d.w*s)+'px';
+      el.style.height=(d.h*s)+'px';
+      el.style.rotate=sp[2]+'deg';
+      el.dataset.rot=sp[2]; el.dataset.ci=ci; el.dataset.di=di;
+      el.setAttribute('aria-hidden','true');
+      el.innerHTML=d.html;
+      el.addEventListener('click',function(){
+        var c2=(+el.dataset.ci+1)%5;
+        el.dataset.ci=c2;
+        var r=(+el.dataset.rot)+22;
+        el.dataset.rot=r;
+        el.innerHTML=DEFS[+el.dataset.di](COLS[c2]).html;
+        el.style.rotate=r+'deg';
+        el.style.transform='scale(1.15)';
+        setTimeout(function(){ el.style.transform=''; },240);
+      });
+      hero.appendChild(el);
+    });
+  }
+  buildShapes();
+  var rt;
+  window.addEventListener('resize',function(){
+    clearTimeout(rt);
+    rt=setTimeout(buildShapes,180);
+  });
+})();
+
+/* 顶部滚动字幕 */
+document.getElementById('mq').textContent =
+  'TIME ENGLISH · 看见规则 · 说出时间 · 拖动指针 · '.repeat(24);
+</script>
+</body>
+</html>

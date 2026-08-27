@@ -16,7 +16,7 @@ const CONFIG = {
   fitViewport: true,
   fixedW: 1280,
   fixedH: 800,
-  backgroundColor: '#0e1116',
+  backgroundColor: '#f6f1e7',
 
   // --- 物理引擎（Matter.js）---
   // Pong 需要球「永不减速」，因此重力与空气阻力全部关闭，
@@ -87,29 +87,46 @@ const CONFIG = {
 };
 
 // --- 颜色系统（禁止在业务代码中硬编码颜色）---
+// Memphis 风格：纸色底 + 黑描边 + 高饱和撞色（设计规范 docs/DESIGN.md §2）
 const PALETTE = {
-  bg:        '#0e1116',
-  bgGrid:    '#1b2330',
-  arena:     '#131b25',      // 场地填充
-  arenaEdge: '#2c3a4a',      // 场地边界
-  wall:      '#3a4a5e',      // 左右墙
-  midLine:   '#243244',      // 中线
+  // --- 基础 Tokens ---
+  paper:     '#f6f1e7',   // 纸色底
+  card:      '#fffdf6',   // 卡片底
+  ink:       '#161616',   // 墨黑：描边 / 文字 / 硬阴影
+  inkSoft:   '#6d675c',   // 弱化文字
+  soft:      '#3c3a33',   // 正文
+  coral:     '#ff6b6b',   // 珊瑚红
+  teal:      '#2ec4b6',   // 青绿
+  sun:       '#ffd23f',   // 明黄
+  blue:      '#3a86ff',   // 宝蓝
+  pink:      '#ff8fab',   // 粉
 
-  ball:      '#ffd54a',
-  ballGlow:  '#ffec9e',
-  trail:     '#ffd54a',
+  // --- 兼容旧 key（保持业务代码稳定）---
+  bg:        '#f6f1e7',
+  bgGrid:    '#efe8d8',
+  arenaEdge: '#161616',
+  text:      '#161616',
+  textDim:   '#6d675c',
+  accent:    '#3a86ff',
+  ok:        '#2ec4b6',
+  miss:      '#ff6b6b',
+  overlay:   'rgba(246, 241, 231, 0.86)',
 
-  p1:        '#4ade80',      // 玩家1（下方，绿）
-  p1Dark:    '#0f3d22',
-  p1Glow:    '#8ff0b5',
-  p2:        '#ff7a7a',      // 玩家2（上方，红）
-  p2Dark:    '#4a1717',
-  p2Glow:    '#ffb3b3',
+  // --- 场地 ---
+  arena:     '#faf3e6',   // 可玩区填充
+  wall:      '#e9e0cc',   // 左右墙
+  midLine:   '#161616',   // 中线（黑）
 
-  text:      '#c8d4e0',
-  textDim:   '#6b7a8c',
-  accent:    '#7fd4ff',
-  ok:        '#4ade80',
-  miss:      '#ef6b6b',
-  overlay:   'rgba(10, 14, 20, 0.82)',
+  // --- 球（明黄 + 黑描边）---
+  ball:      '#ffd23f',
+  ballGlow:  '#fff1b8',
+  trail:     '#ffd23f',
+
+  // --- 玩家：P1(下) 青绿 / P2(上) 珊瑚红，黑描边 ---
+  p1:        '#2ec4b6',
+  p1Dark:    '#0e6f66',
+  p1Glow:    '#9ef1e6',
+  p2:        '#ff6b6b',
+  p2Dark:    '#a83c3c',
+  p2Glow:    '#ffc4c4',
 };

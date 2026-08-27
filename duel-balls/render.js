@@ -16,11 +16,22 @@ const Render = (function () {
   }
 
   function drawBackground() {
-    p.background(PALETTE.bg);
-    p.stroke(PALETTE.bgGrid);
-    p.strokeWeight(1);
-    for (let x = 0; x < p.width; x += 60) p.line(x, 0, x, p.height);
-    for (let y = 0; y < p.height; y += 60) p.line(0, y, p.width, y);
+    p.background(PALETTE.paper);
+    // Memphis 波点纹理：两层错位圆点网格（对应 docs/DESIGN.md §4）
+    p.noStroke();
+    p.fill(22, 22, 22, 46);
+    const s = 40;             // 主网格间距
+    for (let y = 0; y < p.height; y += s) {
+      for (let x = 0; x < p.width; x += s) {
+        if (((x / s) + (y / s)) % 2 === 0) p.circle(x, y, 1.6);
+      }
+    }
+    p.fill(22, 22, 22, 30);
+    for (let y = 20; y < p.height; y += s) {
+      for (let x = 20; x < p.width; x += s) {
+        if (((x / s) + (y / s)) % 2 === 0) p.circle(x, y, 1.6);
+      }
+    }
   }
 
   function drawCircleBody(body, fillCol, strokeCol) {

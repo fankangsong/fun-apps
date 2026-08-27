@@ -5,296 +5,865 @@
 <!-- iPad Safari 适配：禁止双击/双指缩放，viewport-fit=cover 铺满刘海屏 -->
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
-<title>圆的面积可视化 · 剪拼推导 πr²</title>
-<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+<title>圆的面积 · 剪拼推导 πr² · FUN APPS</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.11.3/lib/p5.min.js"></script>
 <script>p5.disableFriendlyErrors = true;</script>
 <style>
+  /* ================= Memphis 设计 Tokens ================= */
+  :root {
+    --paper: #f6f1e7;
+    --ink: #161616;
+    --coral: #ff6b6b;
+    --teal: #2ec4b6;
+    --sun: #ffd23f;
+    --blue: #3a86ff;
+    --pink: #ff8fab;
+    --card: #fffdf6;
+    --weak: #6d675c;
+    --soft: #3c3a33;
+  }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  html, body {
-    /* 防页面回弹（橡皮筋） */
-    overscroll-behavior: none;
-    /* 防 iOS 长按选中/弹出菜单 */
+  html, body { min-height: 100%; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
     -webkit-touch-callout: none;
     -webkit-user-select: none;
     user-select: none;
+    overscroll-behavior: none;
   }
-  body {
-    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: linear-gradient(135deg, #f5f0e8, #e8eef5);
-    min-height: 100vh;
-    display: flex; flex-direction: column; align-items: center;
-    padding: 20px 12px 40px;
+  /* Memphis 波点纹理 */
+  body::before {
+    content: ""; position: fixed; inset: 0; z-index: 0;
+    pointer-events: none; opacity: .8;
+    background-image:
+      radial-gradient(#16161680 1px, transparent 1.6px),
+      radial-gradient(#16161650 1px, transparent 1.6px);
+    background-size: 34px 34px, 54px 54px;
+    background-position: 0 0, 17px 27px;
   }
-  header { text-align: center; margin-bottom: 16px; }
-  header h1 { font-size: 26px; color: #2c3e50; }
-  header p  { font-size: 14px; color: #7a8a9a; margin-top: 4px; }
 
+  /* ================= 顶部滚动字幕 ================= */
+  .marquee {
+    position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+    background: var(--ink); color: var(--sun); overflow: hidden;
+    font-size: 12px; font-weight: 700; letter-spacing: .34em;
+    text-transform: uppercase;
+    padding: 9px 0;
+    padding-top: calc(9px + env(safe-area-inset-top, 0));
+  }
+  .marquee .in { display: inline-block; white-space: nowrap; animation: mq 22s linear infinite; }
+  @keyframes mq { to { transform: translateX(-50%); } }
+
+  /* ================= 主体布局 ================= */
+  .wrap {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto;
+    padding: calc(56px + env(safe-area-inset-top, 0)) clamp(14px, 4vw, 32px) calc(20px + env(safe-area-inset-bottom, 0));
+  }
+
+  /* ================= Hero ================= */
+  .hero {
+    position: relative;
+    text-align: center;
+    padding: clamp(14px, 3vw, 26px) 0 clamp(14px, 3vw, 26px);
+    overflow: hidden;
+  }
+  .hero h1 {
+    font-size: clamp(42px, 8vw, 84px);
+    font-weight: 900; letter-spacing: -.01em; line-height: .95;
+    color: var(--paper);
+    text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--coral);
+  }
+  .hero .pop {
+    display: inline-block;
+    color: var(--sun);
+    text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--blue);
+    transform: rotate(-2deg);
+    padding: 0 .05em;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--ink); color: var(--paper);
+    font-size: clamp(10px, 2.4vw, 12px); font-weight: 800;
+    letter-spacing: .3em; text-transform: uppercase;
+    padding: 8px 18px; transform: rotate(-2deg);
+    margin-top: 14px;
+  }
+  .hero .tag {
+    font-size: clamp(13px, 2.4vw, 14.5px); line-height: 1.6;
+    color: var(--soft);
+    max-width: 540px;
+    margin: 12px auto 0;
+    padding: 0 8px;
+  }
+  .hero .tag b { color: var(--coral); font-weight: 900; }
+  .hero .squiggle {
+    display: block; margin: 12px auto 0;
+    height: 18px; width: 180px; max-width: 50%;
+  }
+
+  /* ================= Memphis 散落装饰图形 ================= */
+  .sh {
+    position: absolute; z-index: 2; cursor: pointer;
+    touch-action: manipulation; will-change: transform;
+    transition: transform .35s cubic-bezier(.3, 1.6, .5, 1), rotate .35s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  @media (hover: hover) { .sh:hover { transform: scale(1.12); } }
+  .sh:active { transform: scale(.94); }
+  .sh svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+  /* ================= 章节标题 ================= */
+  .sec-head {
+    text-align: center;
+    margin: clamp(14px, 3vw, 22px) 0 clamp(10px, 2vw, 14px);
+  }
+  .sec-head h2 {
+    display: inline-block; transform: rotate(-1.5deg);
+    background: var(--ink); color: var(--paper);
+    font-size: clamp(15px, 3vw, 19px); font-weight: 900;
+    letter-spacing: .3em; text-transform: uppercase;
+    padding: 13px 24px;
+  }
+  .sec-head h2 b { color: var(--sun); font-weight: 900; }
+
+  /* ================= 贴纸卡片（共用） ================= */
   .card {
-    background: #fff; border-radius: 16px;
-    box-shadow: 0 4px 20px rgba(0,0,0,.08);
-    padding: 16px; margin-bottom: 16px;
-    max-width: 940px; width: 100%;
+    position: relative;
+    background: var(--card); color: var(--ink);
+    border: 3px solid var(--ink); border-radius: 18px;
+    box-shadow: 7px 7px 0 var(--c, var(--ink));
+    padding: clamp(18px, 3vw, 26px);
+    margin-bottom: clamp(16px, 3vw, 24px);
+    transform: rotate(var(--tilt, 0deg));
+    animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) both;
+    animation-delay: var(--d, 0s);
   }
-  #canvas-box { display: flex; justify-content: center; }
-  /* touch-action:none 只作用于画布：拖拽不触发页面滚动/缩放，同时不影响滑块的触控手势 */
-  #canvas-box canvas { touch-action: none; max-width: 100%; height: auto; border-radius: 8px; }
+  @keyframes pop {
+    from { opacity: 0; transform: rotate(var(--tilt, 0deg)) translateY(26px) scale(.96); }
+  }
+  .card-tag {
+    position: absolute; top: -14px; left: 22px;
+    background: var(--ink); color: var(--sun);
+    font-size: 11px; font-weight: 800;
+    letter-spacing: .25em; text-transform: uppercase;
+    padding: 5px 13px;
+    border-radius: 999px;
+    box-shadow: 3px 3px 0 var(--c, var(--ink));
+    z-index: 3;
+    pointer-events: none;
+    white-space: nowrap;
+  }
 
+  /* ================= 主操作区：画布 + 控制 同屏 ================= */
+  .playground {
+    --c: var(--blue);
+    --tilt: -1deg;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: clamp(12px, 2vw, 20px);
+    padding: clamp(14px, 2.5vw, 20px);
+  }
+  @media (min-width: 860px) {
+    /* 宽屏：画布左、控制右，同屏显示 */
+    .playground { grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); align-items: stretch; }
+  }
+
+  /* ---- 左侧：画布 ---- */
+  .canvas-side {
+    display: flex; flex-direction: column;
+    min-width: 0;
+  }
+  .canvas-wrap {
+    position: relative;
+    flex: 1;
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    background: var(--paper);
+    overflow: hidden;
+    display: flex; justify-content: center; align-items: center;
+    padding: 4px;
+  }
+  .canvas-hint {
+    position: absolute; top: 10px; right: 10px;
+    background: var(--ink); color: var(--sun);
+    font-size: 11px; font-weight: 800;
+    letter-spacing: .2em; text-transform: uppercase;
+    padding: 3px 10px;
+    border-radius: 999px;
+    z-index: 3;
+    pointer-events: none;
+    white-space: nowrap;
+    transform: rotate(-2deg);
+  }
+  #canvas-box { display: flex; justify-content: center; width: 100%; height: 100%; }
+  #canvas-box canvas {
+    touch-action: none;
+    max-width: 100%; max-height: 100%;
+    height: auto; width: auto;
+    border-radius: 6px;
+    display: block;
+    object-fit: contain;
+  }
+
+  /* ---- 右侧：控制（紧凑版） ---- */
+  .controls-side {
+    --c: var(--coral);
+    display: flex; flex-direction: column;
+    gap: 14px;
+    justify-content: center;
+    min-width: 0;
+  }
   .controls {
-    display: flex; flex-wrap: wrap; gap: 20px 32px;
-    align-items: center; justify-content: center;
+    display: flex; flex-direction: column;
+    gap: 14px;
   }
-  .ctrl { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
-  .ctrl label { font-size: 14px; color: #555; font-weight: bold; }
-  .ctrl label .val { color: #e74c3c; }
-  input[type=range] { width: 100%; accent-color: #3498db; height: 26px; }
-
-  #cutBtn {
-    padding: 12px 28px; font-size: 17px; font-weight: bold;
-    color: #fff; background: #e67e22; border: none;
-    border-radius: 10px; cursor: pointer;
-    transition: transform .1s, background .2s;
+  .ctrl-block {
+    --c: var(--coral);
+    display: flex; flex-direction: column;
+    gap: 6px;
   }
-  #cutBtn:hover { background: #d35400; }
-  #cutBtn:active { transform: scale(.96); }
-
-  .check { font-size: 14px; color: #555; display: flex; align-items: center; gap: 6px; }
-  .check input { width: 18px; height: 18px; accent-color: #27ae60; }
-
-  #info {
-    font-size: 18px; line-height: 1.9; color: #2c3e50;
-    text-align: center; padding: 6px 10px;
+  .ctrl-block + .ctrl-block { --c: var(--blue); }
+  .ctrl-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 8px;
   }
-  #info .formula { color: #c0392b; font-weight: bold; font-size: 20px; }
-  #info .hint { font-size: 13px; color: #999; }
+  .ctrl-name {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-weight: 900;
+    font-size: clamp(13px, 2vw, 15px);
+    letter-spacing: .04em;
+  }
+  .ctrl-letter {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 28px; height: 28px;
+    background: var(--c);
+    border: 3px solid var(--ink);
+    border-radius: 8px;
+    font-family: "Cambria", "STIX", "Times New Roman", "Georgia", serif;
+    font-style: italic;
+    font-size: 16px; font-weight: 700;
+    color: var(--ink);
+    box-shadow: 0 2px 0 var(--ink);
+    flex-shrink: 0;
+  }
+  .ctrl-val {
+    font-family: "Cambria", "STIX", "Times New Roman", "Georgia", serif;
+    font-style: italic;
+    font-size: clamp(16px, 2.6vw, 20px);
+    font-weight: 900;
+    color: var(--ink);
+    background: var(--paper);
+    border: 2.5px solid var(--ink);
+    border-radius: 999px;
+    padding: 1px 12px;
+    min-width: 56px;
+    text-align: center;
+    line-height: 1.15;
+  }
+  .ctrl-hint {
+    font-size: clamp(11px, 1.9vw, 12px);
+    color: var(--weak);
+    padding-left: 2px;
+    line-height: 1.5;
+  }
+  /* slider style: Memphis 滑道 */
+  input[type=range] {
+    -webkit-appearance: none; appearance: none;
+    width: 100%; height: 18px;
+    background: transparent; cursor: grab;
+    outline: none;
+    touch-action: manipulation;
+  }
+  input[type=range]:active { cursor: grabbing; }
+  input[type=range]::-webkit-slider-runnable-track {
+    height: 12px;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+  }
+  input[type=range]::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none;
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--c);
+    border: 3px solid var(--ink);
+    box-shadow: 0 2px 0 var(--ink);
+    margin-top: -9px;
+    cursor: grab;
+  }
+  input[type=range]::-webkit-slider-thumb:active {
+    cursor: grabbing;
+    transform: translateY(2px);
+    box-shadow: 0 0 0 var(--ink);
+  }
+  input[type=range]::-moz-range-track {
+    height: 12px;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+  }
+  input[type=range]::-moz-range-thumb {
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: var(--c);
+    border: 3px solid var(--ink);
+    box-shadow: 0 2px 0 var(--ink);
+    cursor: grab;
+  }
+  input[type=range]:focus-visible::-webkit-slider-thumb { outline: 3px solid var(--blue); outline-offset: 3px; }
+  input[type=range]:focus-visible::-moz-range-thumb { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+  /* 主按钮 */
+  .ctrl-row {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: 14px;
+    padding-top: 12px;
+    margin-top: 2px;
+    border-top: 2px dashed var(--ink);
+  }
+  .btn-primary {
+    display: inline-flex; align-items: center; justify-content: center;
+    gap: 6px;
+    padding: 10px 20px;
+    font-size: clamp(14px, 2.4vw, 15px); font-weight: 900;
+    letter-spacing: .03em;
+    color: var(--paper);
+    background: var(--ink);
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    box-shadow: 4px 4px 0 var(--coral);
+    cursor: pointer;
+    touch-action: manipulation;
+    transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), box-shadow .2s;
+    flex-shrink: 0;
+  }
+  .btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 6px 6px 0 var(--coral);
+  }
+  .btn-primary:active {
+    transform: translateY(2px);
+    box-shadow: 1px 1px 0 var(--coral);
+  }
+  .btn-primary:focus-visible {
+    outline: 3px solid var(--blue);
+    outline-offset: 3px;
+  }
+
+  /* 自定义 toggle 复选框 */
+  .toggle {
+    display: inline-flex; align-items: center; gap: 8px;
+    cursor: pointer; touch-action: manipulation;
+    user-select: none;
+  }
+  .toggle input {
+    position: absolute; opacity: 0; width: 0; height: 0;
+    pointer-events: none;
+  }
+  .toggle-box {
+    display: inline-block;
+    width: 46px; height: 26px;
+    background: var(--paper);
+    border: 3px solid var(--ink);
+    border-radius: 999px;
+    position: relative;
+    transition: background .2s;
+    flex-shrink: 0;
+    box-shadow: 0 2px 0 var(--ink);
+  }
+  .toggle-box::after {
+    content: ""; position: absolute; top: 1px; left: 1px;
+    width: 18px; height: 18px;
+    background: var(--ink);
+    border-radius: 50%;
+    transition: transform .25s cubic-bezier(.3, 1.6, .5, 1);
+  }
+  .toggle input:checked + .toggle-box { background: var(--sun); }
+  .toggle input:checked + .toggle-box::after { transform: translateX(20px); }
+  .toggle input:focus-visible + .toggle-box { outline: 3px solid var(--blue); outline-offset: 3px; }
+  .toggle-text {
+    font-size: clamp(13px, 2.2vw, 14px); font-weight: 800;
+    color: var(--ink);
+  }
+
+  /* ================= 卡片 3：公式 ================= */
+  .formula-card { --c: var(--sun); --tilt: -.6deg; }
+  .formula-stage {
+    display: flex; align-items: center; justify-content: center;
+    gap: 14px;
+    margin-bottom: 16px;
+    flex-wrap: wrap;
+  }
+  .formula-eq {
+    font-family: "Cambria", "STIX", "Times New Roman", "Georgia", serif;
+    font-size: clamp(40px, 7vw, 56px);
+    font-weight: 900;
+    color: var(--ink);
+    text-shadow: 3px 3px 0 var(--coral);
+    line-height: 1;
+    letter-spacing: .02em;
+  }
+  .formula-num {
+    font-family: "Cambria", "STIX", "Times New Roman", "Georgia", serif;
+    font-size: clamp(22px, 4vw, 28px);
+    font-weight: 900;
+    color: var(--ink);
+    background: var(--sun);
+    border: 3px solid var(--ink);
+    border-radius: 12px;
+    padding: 6px 16px;
+    box-shadow: 4px 4px 0 var(--ink);
+    transform: rotate(-2deg);
+    line-height: 1;
+    letter-spacing: .02em;
+  }
+  .formula-detail {
+    text-align: center;
+    font-family: "Cambria", "STIX", "Times New Roman", "Georgia", serif;
+    font-size: clamp(15.5px, 3vw, 19px);
+    font-weight: 700;
+    color: var(--soft);
+    margin-bottom: 14px;
+    letter-spacing: .03em;
+  }
+  .formula-hint {
+    font-size: clamp(13.5px, 2.6vw, 15.5px);
+    line-height: 1.7;
+    color: var(--weak);
+    text-align: center;
+    border-top: 2px dashed var(--ink);
+    padding-top: 14px;
+    margin-top: 6px;
+  }
+  .formula-hint b { color: var(--ink); font-weight: 800; }
+
+  /* ================= 页脚 ================= */
+  .foot {
+    position: relative; z-index: 1;
+    max-width: 1100px; margin: 0 auto;
+    display: flex; justify-content: space-between; align-items: center; gap: 12px;
+    border-top: 3px solid var(--ink);
+    margin-top: clamp(20px, 4vw, 36px);
+    padding: 22px clamp(14px, 4vw, 32px) calc(28px + env(safe-area-inset-bottom, 0));
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+    text-transform: uppercase; color: var(--weak);
+    flex-wrap: wrap;
+  }
+  .foot .fin {
+    font-size: 11px; color: var(--ink); letter-spacing: .25em;
+    background: var(--sun); border: 2.5px solid var(--ink);
+    padding: 6px 14px; transform: rotate(-2deg);
+    text-decoration: none; font-weight: 900;
+    box-shadow: 3px 3px 0 var(--ink);
+    transition: transform .2s cubic-bezier(.3, 1.6, .5, 1), box-shadow .2s;
+  }
+  .foot .fin:hover { transform: rotate(-2deg) translateY(-2px); box-shadow: 5px 5px 0 var(--ink); }
+  .foot .fin:active { transform: rotate(-2deg) translateY(2px); box-shadow: 1px 1px 0 var(--ink); }
+  .foot .fin:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+  @media (max-width: 640px) { .foot .r { display: none; } }
+
+  /* ================= 角落标注 ================= */
+  .corner {
+    position: fixed; z-index: 7;
+    font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+    text-transform: uppercase; color: var(--weak);
+    pointer-events: none;
+  }
+  .corner-l { left: 24px; bottom: 22px; }
+  .corner-r { right: 24px; bottom: 22px; }
+  @media (max-width: 640px) { .corner-r { display: none; } }
+
+  /* ================= 响应式 ================= */
+  @media (max-width: 640px) {
+    .sh { transform: scale(.68); }
+    .ctrl-row { gap: 14px; }
+    .btn-primary { padding: 13px 20px; }
+  }
+  @media (min-width: 900px) {
+    /* 超宽屏控制区主按钮放右侧一行不再 wrap */
+  }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    .marquee .in { animation: none; }
+    .sh, .card, .btn-primary, .toggle-box::after, .foot .fin { transition: none; animation: none; }
+  }
 </style>
 </head>
 <body>
 
-<header>
-  <h1>🍕 圆的面积是怎么来的？</h1>
-  <p>把圆剪开、拼一拼，你会发现一个秘密 —— 剪拼前后面积不变！</p>
-</header>
+<div class="marquee" aria-hidden="true"><div class="in" id="mq"></div></div>
 
-<div class="card">
-  <div id="canvas-box"></div>
-</div>
+<div class="wrap">
+  <!-- ========== Hero ========== -->
+  <section class="hero" id="hero">
+    <h1>圆的<br><span class="pop">面积</span></h1>
+    <p class="badge">剪一剪 · 拼一拼 · πr²</p>
+    <p class="tag">把圆剪开、拼起来 —— 形状变了，<b>面积一点没变</b>。调一调半径、改一改扇形数，看看到底发生了什么。</p>
+    <svg class="squiggle" viewBox="0 0 200 24" aria-hidden="true">
+      <path d="M5 16 Q 22 4, 40 14 T 76 14 T 112 12 T 148 10 T 195 8" fill="none" stroke="#161616" stroke-width="7" stroke-linecap="round" transform="translate(2,2)"/>
+      <path d="M5 16 Q 22 4, 40 14 T 76 14 T 112 12 T 148 10 T 195 8" fill="none" stroke="#ffd23f" stroke-width="7" stroke-linecap="round"/>
+    </svg>
+  </section>
 
-<div class="card">
-  <div class="controls">
-    <div class="ctrl">
-      <label>半径 r = <span class="val" id="rVal">80</span>（也可以直接拖画布上的黄点）</label>
-      <input type="range" id="rSlider" min="40" max="120" value="80" step="1">
+  <!-- ========== 主操作区：画布 + 控制 同屏 ========== -->
+  <div class="card playground">
+    <span class="card-tag">互动卡 · STAGE</span>
+    <div class="canvas-side">
+      <div class="canvas-wrap">
+        <span class="canvas-hint">拖动黄色手柄</span>
+        <div id="canvas-box"></div>
+      </div>
     </div>
-    <div class="ctrl">
-      <label>扇形数 n = <span class="val" id="nVal">12</span>（越多越像长方形！）</label>
-      <input type="range" id="nSlider" min="6" max="60" value="12" step="2">
+    <div class="controls-side">
+      <div class="controls">
+        <div class="ctrl-block">
+          <div class="ctrl-head">
+            <span class="ctrl-name"><span class="ctrl-letter">r</span>半径</span>
+            <span class="ctrl-val" id="rVal">80</span>
+          </div>
+          <input type="range" id="rSlider" min="40" max="120" value="80" step="1">
+          <p class="ctrl-hint">也可直接拖画布上的黄手柄</p>
+        </div>
+        <div class="ctrl-block">
+          <div class="ctrl-head">
+            <span class="ctrl-name"><span class="ctrl-letter">n</span>扇形数</span>
+            <span class="ctrl-val" id="nVal">12</span>
+          </div>
+          <input type="range" id="nSlider" min="6" max="60" value="12" step="2">
+          <p class="ctrl-hint">扇形越多越像长方形</p>
+        </div>
+        <div class="ctrl-row">
+          <button id="cutBtn" type="button" class="btn-primary">✂️ 剪开重拼</button>
+          <label class="toggle">
+            <input type="checkbox" id="gridChk">
+            <span class="toggle-box" aria-hidden="true"></span>
+            <span class="toggle-text">方格纸</span>
+          </label>
+        </div>
+      </div>
     </div>
-    <button id="cutBtn">✂️ 剪开重拼</button>
-    <label class="check"><input type="checkbox" id="gridChk">显示方格纸（先数格子估一估）</label>
   </div>
+
+  <!-- ========== 卡片 3：公式 ========== -->
+  <div class="sec-head"><h2>公式 <b>· FORMULA</b></h2></div>
+  <div class="card formula-card">
+    <span class="card-tag">公式卡 · FORMULA</span>
+    <div class="formula-stage">
+      <span class="formula-eq">S = πr²</span>
+      <span class="formula-num" id="formulaNum">≈ 20106.2</span>
+    </div>
+    <p class="formula-detail" id="formulaDetail">π × 80 × 80 ≈ 20106.2</p>
+    <p class="formula-hint" id="formulaHint">猜一猜：点「剪开重拼」后，圆会变成什么形状？面积会变吗？</p>
+  </div>
+
+  <!-- ========== 页脚 ========== -->
+  <footer class="foot">
+    <span>fun apps society · est. 2026</span>
+    <a class="fin" href="../" aria-label="返回首页查看更多游戏">更多游戏</a>
+    <span class="r">memphis vibes · 双击即玩 · nº 04</span>
+  </footer>
 </div>
 
-<div class="card">
-  <div id="info"></div>
-</div>
+<div class="corner corner-l" aria-hidden="true">fun apps society · est. 2026</div>
+<div class="corner corner-r" aria-hidden="true">点一点图形 · 换色换心情</div>
 
 <script>
-// ================= 核心状态 =================
-let r = 80, n = 12;
-let t = 0, targetT = 0;        // 拼合动画进度
-let dragging = false;
-const CX = 230, CY = 230;      // 圆心
-const SX = 430, SY = 240;      // 拼图区域
+  // =====================================================================
+  // Memphis 装饰图形：散落 hero，避开中心区，可点按换色旋转
+  // =====================================================================
+  (function () {
+    var COLS = ['#ff6b6b', '#2ec4b6', '#ffd23f', '#3a86ff', '#ff8fab'];
+    var DEFS = [
+      /* squiggle 波浪线 */
+      function (c) { return { w: 150, h: 60, html: '<svg viewBox="0 0 150 60"><path d="M6 40 Q 22 8, 40 34 T 76 32 T 112 30 T 146 26" fill="none" stroke="' + c + '" stroke-width="11" stroke-linecap="round"/></svg>' }; },
+      /* triangle 三角 */
+      function (c) { return { w: 90, h: 82, html: '<svg viewBox="0 0 90 82"><polygon points="45,4 88,78 2,78" fill="' + c + '"/></svg>' }; },
+      /* dotted circle 虚线圆 */
+      function (c) { return { w: 96, h: 96, html: '<svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="42" fill="' + c + '"/><circle cx="48" cy="48" r="24" fill="none" stroke="#f6f1e7" stroke-width="6" stroke-dasharray="2 12" stroke-linecap="round"/></svg>' }; },
+      /* half circle 半圆 */
+      function (c) { return { w: 120, h: 62, html: '<svg viewBox="0 0 120 62"><path d="M2 60 A 58 58 0 0 1 118 60 Z" fill="' + c + '"/></svg>' }; },
+      /* zigzag 锯齿 */
+      function (c) { return { w: 160, h: 44, html: '<svg viewBox="0 0 160 44"><polyline points="6,34 30,8 54,34 78,8 102,34 126,8 150,34" fill="none" stroke="' + c + '" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>' }; },
+      /* pill 条纹胶囊 */
+      function (c) { return { w: 130, h: 56, html: '<svg viewBox="0 0 130 56"><rect x="4" y="4" width="122" height="48" rx="24" fill="' + c + '"/><g stroke="#f6f1e7" stroke-width="7" stroke-linecap="round"><path d="M42 12 L28 44"/><path d="M70 12 L56 44"/><path d="M98 12 L84 44"/></g></svg>' }; },
+      /* arc fan 扇形弧 */
+      function (c) { return { w: 120, h: 66, html: '<svg viewBox="0 0 120 66"><path d="M6 62 A 54 54 0 0 1 114 62" fill="none" stroke="' + c + '" stroke-width="10"/><path d="M28 62 A 32 32 0 0 1 92 62" fill="none" stroke="#161616" stroke-width="8"/></svg>' }; }
+    ];
+    var SPOTS = [
+      [3, 8, -8],     // 左上
+      [82, 6, 12],    // 右上
+      [5, 58, 6],     // 左下
+      [83, 56, -10],  // 右下
+      [44, 76, -4]    // 居下
+    ];
 
-let rSlider, nSlider, cutBtn, gridChk, rVal, nVal, infoBox;
+    function buildShapes() {
+      Array.prototype.forEach.call(document.querySelectorAll('#hero .sh'), function (e) { e.remove(); });
+      var hero = document.getElementById('hero');
+      var w = window.innerWidth;
+      var s = w < 640 ? 0.68 : 1;
+      var n = w < 520 ? 3 : SPOTS.length;
+      SPOTS.slice(0, n).forEach(function (sp, i) {
+        var di = i % DEFS.length, ci = i % 5;
+        var d = DEFS[di](COLS[ci]);
+        var el = document.createElement('div');
+        el.className = 'sh';
+        el.style.left = sp[0] + '%';
+        el.style.top = sp[1] + '%';
+        el.style.width = (d.w * s) + 'px';
+        el.style.height = (d.h * s) + 'px';
+        el.style.rotate = sp[2] + 'deg';
+        el.dataset.rot = sp[2]; el.dataset.ci = ci; el.dataset.di = di;
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = d.html;
+        el.addEventListener('click', function () {
+          var c2 = (+el.dataset.ci + 1) % 5;
+          el.dataset.ci = c2;
+          var rot = (+el.dataset.rot) + 22;
+          el.dataset.rot = rot;
+          el.innerHTML = DEFS[+el.dataset.di](COLS[c2]).html;
+          el.style.rotate = rot + 'deg';
+          el.style.transform = 'scale(1.15)';
+          setTimeout(function () { el.style.transform = ''; }, 240);
+        });
+        hero.appendChild(el);
+      });
+    }
+    buildShapes();
+    var rt;
+    window.addEventListener('resize', function () {
+      clearTimeout(rt);
+      rt = setTimeout(buildShapes, 180);
+    });
 
-// ================= p5 主程序 =================
-function setup() {
-  pixelDensity(1);                    // iPad Retina 3x 下限制像素密度，防掉帧
-  let c = createCanvas(900, 560);     // 固定逻辑画布尺寸，CSS 等比缩放显示
-  c.parent('canvas-box');
+    // 顶部滚动字幕
+    document.getElementById('mq').textContent =
+      'FUN APPS · 圆的面积 · 剪拼推导 πr² · 双击即玩 · OFFLINE OK · '.repeat(20);
+  })();
 
-  rSlider = document.getElementById('rSlider');
-  nSlider = document.getElementById('nSlider');
-  cutBtn  = document.getElementById('cutBtn');
-  gridChk = document.getElementById('gridChk');
-  rVal  = document.getElementById('rVal');
-  nVal  = document.getElementById('nVal');
-  infoBox = document.getElementById('info');
+  // =====================================================================
+  // p5 主程序：扇形剪拼动画 + 拖拽半径
+  // =====================================================================
+  let r = 80, n = 12;
+  let t = 0, targetT = 0;          // 拼合动画进度
+  let dragging = false;
+  const CX = 230, CY = 230;        // 圆心
+  const SX = 460, SY = 240;        // 拼图区域起点
 
-  rSlider.addEventListener('input', () => { r = +rSlider.value; rVal.textContent = r; });
-  nSlider.addEventListener('input', () => { n = +nSlider.value; nVal.textContent = n; });
-  cutBtn.addEventListener('click', toggle);
-  gridChk.addEventListener('change', () => {});
+  // Memphis palette（与 CSS Tokens 一致）
+  const COL_CORAL = '#ff6b6b';
+  const COL_BLUE  = '#3a86ff';
+  const COL_INK   = '#161616';
+  const COL_PAPER = '#f6f1e7';
+  const COL_SUN   = '#ffd23f';
+  const COL_GRID  = '#d6cdb8';
 
-  // Pointer Events 统一鼠标 + iPad 触控 + 触控笔（仓库规范第 10 节）。
-  // 事件只绑在画布上，控件（滑块/按钮/复选框）完全走原生触控，互不干扰。
-  const cnv = c.elt;
-  cnv.addEventListener('pointerdown', onPointerDown);
-  cnv.addEventListener('pointermove', onPointerMove);
-  cnv.addEventListener('pointerup', onPointerUp);
-  cnv.addEventListener('pointercancel', onPointerCancel);
-}
+  let rSlider, nSlider, cutBtn, gridChk, rVal, nVal;
+  let formulaNum, formulaDetail, formulaHint;
 
-function toggle() {
-  targetT = 1 - targetT;
-  cutBtn.textContent = targetT === 1 ? '🔄 还原成圆' : '✂️ 剪开重拼';
-}
+  function setup() {
+    pixelDensity(1);                   // iPad Retina 3x 下限制像素密度，防掉帧
+    let c = createCanvas(900, 560);    // 固定逻辑画布尺寸，CSS 等比缩放显示
+    c.parent('canvas-box');
 
-function draw() {
-  background(250, 248, 242);
-  t += (targetT - t) * 0.06;
-  if (abs(targetT - t) < 0.002) t = targetT;
+    rSlider = document.getElementById('rSlider');
+    nSlider = document.getElementById('nSlider');
+    cutBtn  = document.getElementById('cutBtn');
+    gridChk = document.getElementById('gridChk');
+    rVal    = document.getElementById('rVal');
+    nVal    = document.getElementById('nVal');
+    formulaNum    = document.getElementById('formulaNum');
+    formulaDetail = document.getElementById('formulaDetail');
+    formulaHint   = document.getElementById('formulaHint');
 
-  if (gridChk.checked) drawGrid();
-  drawSectors();
-  drawAnnotations();
-  updateInfo();
-}
+    rSlider.addEventListener('input', () => { r = +rSlider.value; rVal.textContent = r; });
+    nSlider.addEventListener('input', () => { n = +nSlider.value; nVal.textContent = n; });
+    cutBtn.addEventListener('click', toggle);
 
-// ---------- 核心：扇形剪拼动画 ----------
-function drawSectors() {
-  let s = TWO_PI * r / n;      // 每个扇形的弧长
-  let Ytop = SY - r / 2, Ybot = SY + r / 2;
-  let e = ease(t);
-  let gap = 0.015 * min(1, t * 8) * min(1, (1 - t) * 8); // 剪缝
-
-  for (let i = 0; i < n; i++) {
-    let a1 = i * TWO_PI / n;
-    let a2 = (i + 1) * TWO_PI / n;
-
-    // 拼好后的目标位置：红蓝交错，一上一下
-    let k = floor(i / 2), tx, ty, midDir;
-    if (i % 2 === 0) { tx = SX + k * s + s / 2; ty = Ybot; midDir = -HALF_PI; }
-    else             { tx = SX + (k + 1) * s;   ty = Ytop; midDir =  HALF_PI; }
-
-    let rot = normAngle(midDir - (a1 + PI / n)) * e;
-    let tipX = lerp(CX, tx, e);   // 尖点从圆心飞向目标
-    let tipY = lerp(CY, ty, e);
-
-    if (i % 2 === 0) { fill(255, 120, 80); stroke(214, 84, 48); }
-    else             { fill(90, 150, 255); stroke(48, 100, 200); }
-    strokeWeight(1);
-
-    drawSector(tipX, tipY, a1 + rot + gap, a2 + rot - gap);
+    // Pointer Events 统一鼠标 + iPad 触控 + 触控笔（仓库规范）
+    const cnv = c.elt;
+    cnv.addEventListener('pointerdown', onPointerDown);
+    cnv.addEventListener('pointermove', onPointerMove);
+    cnv.addEventListener('pointerup', onPointerUp);
+    cnv.addEventListener('pointercancel', onPointerCancel);
   }
-}
 
-function drawSector(x, y, a1, a2) {  // 以 为尖点画扇形
-  beginShape();
-  vertex(x, y);
-  let steps = max(4, floor((a2 - a1) * 30));
-  for (let j = 0; j <= steps; j++) {
-    let a = lerp(a1, a2, j / steps);
-    vertex(x + r * cos(a), y + r * sin(a));
-  }
-  endShape(CLOSE);
-}
-
-// ---------- 画布标注 ----------
-function drawAnnotations() {
-  let Ytop = SY - r / 2, Ybot = SY + r / 2;
-
-  if (t < 0.5) {          // 圆状态：半径线 + 拖拽手柄
-    stroke(80); strokeWeight(2);
-    let ra = -0.5;
-    line(CX, CY, CX + r * cos(ra), CY + r * sin(ra));
-    noStroke(); fill(80); textSize(16);
-    text('r = ' + r, CX + r * cos(ra) * 0.55 + 8, CY + r * sin(ra) * 0.55);
-
-    fill(255, 200, 0); stroke(200, 150, 0); strokeWeight(2);
-    circle(CX + r, CY, 16);
-    noStroke(); fill(150); textSize(14);
-    text('← 拖动黄点改变半径', CX + r - 190, CY - 12);
+  function toggle() {
+    targetT = 1 - targetT;
+    cutBtn.textContent = targetT === 1 ? '🔄 还原成圆' : '✂️ 剪开重拼';
   }
 
-  if (t > 0.65) {         // 拼合状态：虚线长方形 + 宽高标注
-    let alpha = map(t, 0.65, 1, 0, 255);
-    stroke(60, alpha); strokeWeight(2);
-    drawingContext.setLineDash([6, 5]);
-    noFill();
-    rect(SX, Ytop, PI * r, r);
-    drawingContext.setLineDash([]);
+  function draw() {
+    background(COL_PAPER);
+    t += (targetT - t) * 0.06;
+    if (Math.abs(targetT - t) < 0.002) t = targetT;
 
-    noStroke(); fill(60, alpha); textSize(16);
-    let cxm = SX + PI * r / 2;
-    line(cxm, Ytop - 26, cxm, Ytop - 8);
-    text('宽 = 圆周长的一半 = πr ≈ ' + nf(PI * r, 0, 1), cxm - 110, Ytop - 34);
-    text('高 = r = ' + r, SX + PI * r + 12, SY + 5);
+    if (gridChk.checked) drawGrid();
+    drawSectors();
+    drawAnnotations();
+    updateInfo();
   }
-}
 
-// ---------- 方格纸 ----------
-function drawGrid() {
-  stroke(210); strokeWeight(1);
-  for (let x = 0; x <= width; x += 20) line(x, 0, x, height);
-  for (let y = 0; y <= height; y += 20) line(0, y, width, y);
-  noStroke(); fill(170); textSize(12);
-  text('每小格 = 20 × 20', 20, 24);
-}
+  // ---------- 核心：扇形剪拼动画 ----------
+  function drawSectors() {
+    let s = TWO_PI * r / n;            // 每个扇形的弧长
+    let Ytop = SY - r / 2, Ybot = SY + r / 2;
+    let e = ease(t);
+    // 剪缝（动画中间出现，结束消失）
+    let gap = 0.015 * Math.min(1, t * 8) * Math.min(1, (1 - t) * 8);
 
-// ---------- 信息面板（HTML，实时刷新） ----------
-function updateInfo() {
-  let area = PI * r * r;
-  let html;
-  if (t > 0.65) {
-    html =
-      `拼成的图形：宽 πr ≈ <b>${nf(PI * r, 0, 1)}</b> × 高 r = <b>${r}</b> ≈ ${nf(area, 0, 1)}<br>` +
-      `<span class="formula">圆的面积 S = πr × r = πr² ≈ ${nf(area, 0, 1)}</span><br>` +
-      `<span class="hint">剪拼只改变形状，面积一点都没变！试试把 n 调到 60，看看会发生什么？</span>`;
-  } else {
-    html =
-      `圆的面积 S = πr² = 3.14 × ${r} × ${r} ≈ <b>${nf(area, 0, 1)}</b><br>` +
-      `<span class="hint">猜一猜：点「✂️ 剪开重拼」后，圆会变成什么形状？面积会变吗？</span>`;
+    for (let i = 0; i < n; i++) {
+      let a1 = i * TWO_PI / n;
+      let a2 = (i + 1) * TWO_PI / n;
+
+      // 拼好后的目标位置：红蓝交错，一上一下
+      let k = Math.floor(i / 2), tx, ty, midDir;
+      if (i % 2 === 0) { tx = SX + k * s + s / 2; ty = Ybot; midDir = -HALF_PI; }
+      else             { tx = SX + (k + 1) * s;   ty = Ytop; midDir =  HALF_PI; }
+
+      let rot = normAngle(midDir - (a1 + PI / n)) * e;
+      let tipX = lerp(CX, tx, e);       // 尖点从圆心飞向目标
+      let tipY = lerp(CY, ty, e);
+
+      // Memphis 配色：corona/blue 交替，黑色硬描边 2px
+      if (i % 2 === 0) { fill(COL_CORAL); stroke(COL_INK); }
+      else             { fill(COL_BLUE);  stroke(COL_INK); }
+      strokeWeight(2);
+
+      drawSector(tipX, tipY, a1 + rot + gap, a2 + rot - gap);
+    }
   }
-  infoBox.innerHTML = html;
-}
 
-// ---------- 拖拽半径：Pointer Events（统一鼠标 + iPad 触控 + 触控笔） ----------
-let activePointerId = null;           // 单指锁定，避免多指干扰
+  function drawSector(x, y, a1, a2) {  // 以 (x,y) 为尖点画扇形
+    beginShape();
+    vertex(x, y);
+    let steps = Math.max(4, Math.floor((a2 - a1) * 30));
+    for (let j = 0; j <= steps; j++) {
+      let a = lerp(a1, a2, j / steps);
+      vertex(x + r * Math.cos(a), y + r * Math.sin(a));
+    }
+    endShape(CLOSE);
+  }
 
-// 画布坐标换算：CSS 显示尺寸 → 画布逻辑像素（pixelDensity(1)，不除 devicePixelRatio）
-function canvasPoint(e) {
-  const el = e.target;
-  const rect = el.getBoundingClientRect();
-  return {
-    x: (e.clientX - rect.left) * (el.width / rect.width),
-    y: (e.clientY - rect.top) * (el.height / rect.height),
-  };
-}
+  // ---------- 画布标注 ----------
+  function drawAnnotations() {
+    let Ytop = SY - r / 2, Ybot = SY + r / 2;
 
-function onPointerDown(e) {
-  if (activePointerId !== null) return;          // 已有手指在拖，忽略多余指针
-  activePointerId = e.pointerId;
-  e.preventDefault();
-  try { e.target.setPointerCapture(e.pointerId); } catch (_) {}   // 移出画布仍能收到 move/up
-  const p = canvasPoint(e);
-  if (t < 0.5 && dist(p.x, p.y, CX + r, CY) < 20) dragging = true;
-}
-function onPointerMove(e) {
-  if (e.pointerId !== activePointerId) return;
-  if (dragging) {
+    if (t < 0.5) {            // 圆状态：半径线 + 拖拽手柄
+      noFill(); stroke(COL_INK); strokeWeight(2);
+      let ra = -0.5;
+      arc(CX, CY, r * 2, r * 2, ra - 0.15, ra + 0.15, OPEN);
+      // 用一条直线提示半径方向 + r 字样
+      strokeWeight(2);
+      line(CX, CY, CX + r * Math.cos(ra), CY + r * Math.sin(ra));
+      noStroke(); fill(COL_INK); textSize(16); textStyle(BOLD);
+      text('r = ' + r, CX + r * Math.cos(ra) * 0.55 + 8, CY + r * Math.sin(ra) * 0.55 - 8);
+
+      // 拖拽手柄：黄色 + 黑描边（Memphis 风）
+      fill(COL_SUN); stroke(COL_INK); strokeWeight(3);
+      circle(CX + r, CY, 18);
+      noStroke(); fill(COL_INK); textSize(11); textStyle(BOLD);
+      textAlign(LEFT);
+      text('← 拖我', CX + r - 6, CY - 18);
+    }
+
+    if (t > 0.65) {           // 拼合状态：虚线长方形 + 宽高标注
+      let alpha = map(t, 0.65, 1, 0, 255);
+      stroke(22, 22, 22, alpha); strokeWeight(2);
+      drawingContext.setLineDash([6, 5]);
+      noFill();
+      rect(SX, Ytop, PI * r, r);
+      drawingContext.setLineDash([]);
+
+      noStroke(); fill(22, 22, 22, alpha); textSize(15); textStyle(BOLD);
+      textAlign(CENTER);
+      let cxm = SX + PI * r / 2;
+      // 上方居中标尺：宽
+      stroke(22, 22, 22, alpha); strokeWeight(2);
+      line(cxm, Ytop - 24, cxm, Ytop - 8);
+      noStroke();
+      text('宽 = πr ≈ ' + nf(PI * r, 0, 1), cxm, Ytop - 32);
+      // 右侧标尺：高
+      textAlign(LEFT);
+      text('高 = r = ' + r, SX + PI * r + 12, SY + 5);
+    }
+    textAlign(LEFT); textStyle(NORMAL);
+  }
+
+  // ---------- 方格纸 ----------
+  function drawGrid() {
+    stroke(COL_GRID); strokeWeight(1);
+    for (let x = 0; x <= width; x += 20) line(x, 0, x, height);
+    for (let y = 0; y <= height; y += 20) line(0, y, width, y);
+    noStroke(); fill(140); textSize(12); textStyle(NORMAL);
+    text('每小格 = 20 × 20', 20, 24);
+  }
+
+  // ---------- 公式卡片 HTML ----------
+  function updateInfo() {
+    let area = PI * r * r;
+    formulaNum.textContent = '≈ ' + nf(area, 0, 1);
+    formulaDetail.textContent = 'π × ' + r + ' × ' + r + ' ≈ ' + nf(area, 0, 1);
+    if (t > 0.65) {
+      formulaHint.innerHTML =
+        '拼成的图形：宽 <b>πr ≈ ' + nf(PI * r, 0, 1) +
+        '</b> × 高 <b>' + r + '</b> ≈ ' + nf(area, 0, 1) + '。<br>' +
+        '试试把 <b>n</b> 调到 60，长方形是不是越来越像真正的长方形？';
+    } else {
+      formulaHint.innerHTML =
+        '先数一数方格，再算出面积。<br>' +
+        '点 <b>「剪开重拼」</b>，圆会变成什么形状？面积变了吗？';
+    }
+  }
+
+  // ---------- 拖拽半径：Pointer Events ----------
+  let activePointerId = null;         // 单指锁定，避免多指干扰
+
+  function canvasPoint(e) {
+    const el = e.target;
+    const rect = el.getBoundingClientRect();
+    return {
+      x: (e.clientX - rect.left) * (el.width / rect.width),
+      y: (e.clientY - rect.top) * (el.height / rect.height),
+    };
+  }
+
+  function onPointerDown(e) {
+    if (activePointerId !== null) return;
+    activePointerId = e.pointerId;
+    e.preventDefault();
+    try { e.target.setPointerCapture(e.pointerId); } catch (_) {}
     const p = canvasPoint(e);
-    r = constrain(dist(p.x, p.y, CX, CY), 40, 120);
-    rSlider.value = r; rVal.textContent = r;
+    if (t < 0.5 && dist(p.x, p.y, CX + r, CY) < 22) dragging = true;
   }
-}
-function onPointerUp(e) {
-  if (e.pointerId !== activePointerId) return;
-  activePointerId = null;
-  dragging = false;
-}
-function onPointerCancel(e) {
-  if (e.pointerId !== activePointerId) return;
-  activePointerId = null;
-  dragging = false;
-}
+  function onPointerMove(e) {
+    if (e.pointerId !== activePointerId) return;
+    if (dragging) {
+      const p = canvasPoint(e);
+      r = constrain(dist(p.x, p.y, CX, CY), 40, 120);
+      rSlider.value = r; rVal.textContent = r;
+    }
+  }
+  function onPointerUp(e) {
+    if (e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    dragging = false;
+  }
+  function onPointerCancel(e) {
+    if (e.pointerId !== activePointerId) return;
+    activePointerId = null;
+    dragging = false;
+  }
 
-// ---------- 工具函数（注意：不能用 p5 保留名 smooth！） ----------
-function normAngle(a) {
-  return ((a + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
-}
-function ease(x) { return x * x * (3 - 2 * x); }
+  // ---------- 工具函数 ----------
+  function normAngle(a) {
+    return ((a + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
+  }
+  function ease(x) { return x * x * (3 - 2 * x); }
 </script>
 </body>
 </html>

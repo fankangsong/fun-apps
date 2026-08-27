@@ -537,23 +537,31 @@ function renderGame() {
   if (CONFIG.debug.showBodies) Render.drawAll();
 }
 
-// 场地：左右墙 + 中线 + 双方底线
+// 场地：左右墙 + 中线 + 双方底线（Memphis 纸色 + 黑描边）
 function drawArena() {
   const lw = playLeft();
   const rw = playRight();
 
-  // 可玩区
+  // 可玩区：纸色底
   noStroke();
   fill(PALETTE.arena);
   rect(lw, 0, rw - lw, height);
 
-  // 左右墙（击中时高亮）
-  const wallAlpha = state.flash.wall > 0 ? 255 : 160;
+  // 可玩区外缘黑描边（Memphis 骨架）
+  stroke(PALETTE.ink);
+  strokeWeight(3);
+  noFill();
+  rect(lw, 0, rw - lw, height);
+
+  // 左右墙（击中时高亮 + 黑边贴纸感）
+  const wallAlpha = state.flash.wall > 0 ? 255 : 150;
+  stroke(PALETTE.ink);
+  strokeWeight(2.5);
   fill(red(color(PALETTE.wall)), green(color(PALETTE.wall)), blue(color(PALETTE.wall)), wallAlpha);
   rect(0, 0, lw, height);
   rect(rw, 0, width - rw, height);
 
-  // 中线（虚线）
+  // 中线（黑虚线）
   stroke(PALETTE.midLine);
   strokeWeight(3);
   const dash = 22;
@@ -561,16 +569,21 @@ function drawArena() {
     line(x, height / 2, Math.min(x + dash, rw), height / 2);
   }
 
-  // 中心圆
+  // 中心圆（黑描边空心圆）
   noFill();
-  strokeWeight(2);
+  stroke(PALETTE.ink);
+  strokeWeight(2.5);
   circle(width / 2, height / 2, Math.min(width, height) * 0.22);
 
-  // 双方底线
-  strokeWeight(4);
+  // 双方底线：玩家色粗线 + 黑边
+  strokeWeight(5);
   stroke(PALETTE.p1Dark);
   line(lw, height - 3, rw, height - 3);
   stroke(PALETTE.p2Dark);
+  line(lw, 3, rw, 3);
+  strokeWeight(2.5);
+  stroke(PALETTE.ink);
+  line(lw, height - 3, rw, height - 3);
   line(lw, 3, rw, 3);
   noStroke();
 }
@@ -586,7 +599,7 @@ function drawPaddle(body, playerId) {
   push();
   translate(body.position.x, body.position.y);
 
-  // 命中辉光
+  // 命中辉光（同色柔光）
   if (flash > 0) {
     noStroke();
     const c = color(glow);
@@ -596,12 +609,15 @@ function drawPaddle(body, playerId) {
     rect(0, 0, L.paddleW + 22, G.paddleThickness + 22, 14);
   }
 
-  noStroke();
+  // 板子：玩家色填充 + 黑描边（Memphis 贴纸）
+  stroke(PALETTE.ink);
+  strokeWeight(3);
   fill(flash > 0 ? glow : base);
   rectMode(CENTER);
   rect(0, 0, L.paddleW, G.paddleThickness, G.paddleThickness / 2);
 
   // 板心标记：帮助玩家判断击球点（正中反弹角最小）
+  noStroke();
   fill(isP1 ? PALETTE.p1Dark : PALETTE.p2Dark);
   rect(0, 0, 4, G.paddleThickness * 0.5, 2);
 
@@ -612,12 +628,15 @@ function drawPaddle(body, playerId) {
 function drawBall() {
   const r = CONFIG.game.ballRadius;
   push();
+  // 外发光（纸色柔和光晕）
   noStroke();
-  // 外发光
   const g = color(PALETTE.ballGlow);
-  g.setAlpha(60);
+  g.setAlpha(70);
   fill(g);
   circle(ball.position.x, ball.position.y, r * 3.2);
+  // 球体：明黄 + 黑描边
+  stroke(PALETTE.ink);
+  strokeWeight(3);
   fill(PALETTE.ball);
   circle(ball.position.x, ball.position.y, r * 2);
   pop();
@@ -638,60 +657,112 @@ function drawTrail() {
   pop();
 }
 
+// 带黑色硬阴影的 Memphis 数字（分数）
+function drawMemphisNumber(str, x, y, size, color, dx, dy) {
+  push();
+  textAlign(CENTER, CENTER);
+  noStroke();
+  // 显式设字号，避免 p5 textFont 回退导致字号被吞
+  textSize(size);
+  fill(PALETTE.ink);
+  text(str, x + dx, y + dy);
+  textSize(size);
+  fill(color);
+  text(str, x, y);
+  pop();
+}
+
 function drawHUD() {
   const cx = width / 2;
 
   push();
   textAlign(CENTER, CENTER);
-  noStroke();
 
-  // 比分：P2 在上（旋转 180° 便于对面玩家阅读），P1 在下
-  textSize(56);
-  fill(PALETTE.p2);
+  // 比分：镜像布局 —— P2 在上方半场（旋转 180° 便于上方玩家正向阅读），
+  // P1 在下方半场（正向）。远离中线与中心圆，无视觉重叠。
+  const scoreY2 = height * 0.20;
+  const scoreY1 = height * 0.80;
+  const scoreSize = 76;
+
+  // P2 比分 + 玩家标签（上方，旋转 180°）
   push();
-  translate(cx, height / 2 - 70);
+  translate(cx, scoreY2);
   rotate(PI);
-  text(state.scoreP2, 0, 0);
+  drawMemphisNumber(String(state.scoreP2), -28, 0, scoreSize, PALETTE.p2, -5, 5);
+  // 玩家标签（与分数并排，整体旋转后仍正向显示）
+  noStroke();
+  fill(PALETTE.p2Dark);
+  textAlign(LEFT, CENTER);
+  textSize(22);
+  textStyle(BOLD);
+  text('P2', 30, 0);
+  textStyle(NORMAL);
   pop();
 
-  fill(PALETTE.p1);
-  text(state.scoreP1, cx, height / 2 + 70);
+  // P1 比分 + 玩家标签（下方，正向）
+  drawMemphisNumber(String(state.scoreP1), cx - 28, scoreY1, scoreSize, PALETTE.p1, -5, 5);
+  noStroke();
+  fill(PALETTE.p1Dark);
+  textAlign(LEFT, CENTER);
+  textSize(22);
+  textStyle(BOLD);
+  text('P1', cx + 30, scoreY1);
+  textStyle(NORMAL);
 
-  // 中央信息：难度 + 连续对拉次数
-  textSize(14);
-  fill(PALETTE.textDim);
+  // 顶部难度信息条（避开中线与中心圆，不与场地元素重叠）
+  textAlign(CENTER, TOP);
+  textSize(13);
+  noStroke();
+  fill(PALETTE.inkSoft);
   text(
     `${currentDifficulty().name} · 先到 ${CONFIG.game.winScore} 分 · 回合 ${state.rallyHits} 拍`,
-    cx, height / 2 - 4
+    cx, 16
   );
 
-  // 左右角落提示
+  // HUD 操作提示（加大字号到 14px，留安全边距避免贴近板子/边角被截断）
+  textStyle(BOLD);
+  textSize(14);
+  fill(PALETTE.ink);
+  // P1 提示：底部左侧（远离底部板子，留 56px 安全距离）
   textAlign(LEFT, BOTTOM);
-  textSize(12);
-  fill(PALETTE.textDim);
-  text('P1: 下半屏拖动 / A·D', 16, height - 12);
-  textAlign(RIGHT, TOP);
-  text('P2: 上半屏拖动 / J·L', width - 16, 12);
+  text('P1 · 下半屏拖动 / A · D', 18, height - 56);
+  // P2 提示：顶部右侧（远离顶部信息条）
+  textAlign(RIGHT, BOTTOM);
+  text('P2 · 上半屏拖动 / J · L', width - 18, 40);
+  textStyle(NORMAL);
+
+  // 角落俱乐部标注（弱化大字距，留安全边距）
+  textSize(10.5);
+  fill(PALETTE.inkSoft);
+  textAlign(LEFT, BOTTOM);
+  text('fun apps society · est. 2026', 18, height - 18);
+  textAlign(RIGHT, BOTTOM);
+  text('memphis vibes · 双击即玩 · nº 04', width - 18, height - 18);
   pop();
 }
 
 function drawServeHint() {
   const isP1 = state.server === PLAYER.P1;
   const y = isP1 ? height * 0.72 : height * 0.28;
+  const col = isP1 ? PALETTE.p1 : PALETTE.p2;
 
   push();
   textAlign(CENTER, CENTER);
+  // 黑底胶囊提示（Memphis 徽章）
+  const msg = isP1 ? 'P1 发球 · 拖动瞄准 · 松手 / 点击发出' : 'P2 发球 · 拖动瞄准 · 松手 / 点击发出';
   noStroke();
-  fill(isP1 ? PALETTE.p1 : PALETTE.p2);
-  textSize(20);
-
+  const w = textWidth(msg) + 44;
+  fill(PALETTE.ink);
+  rect(width / 2 - w / 2, y - 19, w, 38, 19);
+  fill(col);
+  textSize(18);
   if (isP1) {
-    text('P1 发球：拖动瞄准，松手 / 点击发出', width / 2, y);
+    text(msg, width / 2, y + 2);
   } else {
     push();
     translate(width / 2, y);
     rotate(PI);
-    text('P2 发球：拖动瞄准，松手 / 点击发出', 0, 0);
+    text(msg, 0, 2);
     pop();
   }
   pop();
@@ -699,14 +770,8 @@ function drawServeHint() {
 
 function drawScoredBanner() {
   const winnerIsP1 = state.lastScorer === PLAYER.P1;
-  push();
-  textAlign(CENTER, CENTER);
-  noStroke();
-  fill(winnerIsP1 ? PALETTE.p1 : PALETTE.p2);
-  textSize(34);
-  const msg = winnerIsP1 ? 'P1 得分！' : 'P2 得分！';
-  text(msg, width / 2, height / 2 - 130);
-  pop();
+  drawMemphisNumber(winnerIsP1 ? 'P1 得分！' : 'P2 得分！',
+    width / 2, height / 2 - 130, 34, winnerIsP1 ? PALETTE.p1 : PALETTE.p2, -4, 4);
 }
 
 function drawGameOver() {
@@ -716,52 +781,182 @@ function drawGameOver() {
   rect(0, 0, width, height);
 
   const isP1 = state.winner === PLAYER.P1;
+  const col = isP1 ? PALETTE.p1 : PALETTE.p2;
+
+  // 获胜大字（Memphis 硬阴影）
+  drawMemphisNumber(isP1 ? 'P1 获胜' : 'P2 获胜', width / 2, height / 2 - 40, 64, col, -6, 6);
+
+  // 比分
+  drawMemphisNumber(`${state.scoreP1} : ${state.scoreP2}`, width / 2, height / 2 + 28, 30, PALETTE.ink, -3, 3);
+
+  // 再来一局提示（黑底胶囊）
+  const hint = '点击任意处 / 按 R 再来一局';
   textAlign(CENTER, CENTER);
-  fill(isP1 ? PALETTE.p1 : PALETTE.p2);
-  textSize(64);
-  text(isP1 ? 'P1 获胜' : 'P2 获胜', width / 2, height / 2 - 40);
-
-  fill(PALETTE.text);
-  textSize(28);
-  text(`${state.scoreP1} : ${state.scoreP2}`, width / 2, height / 2 + 24);
-
-  fill(PALETTE.textDim);
+  noStroke();
+  const w = textWidth(hint) + 44;
+  fill(PALETTE.ink);
+  rect(width / 2 - w / 2, height / 2 + 72, w, 40, 20);
+  fill(PALETTE.sun);
   textSize(16);
-  text('点击任意处 / 按 R 再来一局', width / 2, height / 2 + 76);
+  text(hint, width / 2, height / 2 + 92);
+  pop();
+}
+
+// 菜单散落 Memphis 图形（仅装饰，呼应首页散落贴纸）
+function drawMenuShapes() {
+  const shapes = [
+    { t: 'tri', x: width * 0.12, y: height * 0.18, s: 44, col: PALETTE.coral, rot: -14 },
+    { t: 'dot', x: width * 0.86, y: height * 0.14, s: 40, col: PALETTE.blue, rot: 10 },
+    { t: 'squig', x: width * 0.1,  y: height * 0.82, s: 90, col: PALETTE.teal, rot: 8 },
+    { t: 'tri', x: width * 0.88, y: height * 0.8,  s: 40, col: PALETTE.sun, rot: -6 },
+    { t: 'pill', x: width * 0.78, y: height * 0.28, s: 80, col: PALETTE.pink, rot: 12 },
+  ];
+  push();
+  for (const sh of shapes) {
+    push();
+    translate(sh.x, sh.y);
+    rotate(radians(sh.rot));
+    stroke(PALETTE.ink);
+    strokeWeight(2.5);
+    fill(sh.col);
+    if (sh.t === 'tri') {
+      const r = sh.s / 2;
+      triangle(0, -r, r * 0.87, r * 0.5, -r * 0.87, r * 0.5);
+    } else if (sh.t === 'dot') {
+      circle(0, 0, sh.s);
+      noFill();
+      stroke(PALETTE.paper);
+      strokeWeight(3);
+      strokeCap(ROUND);
+      for (let a = 0; a < 12; a++) {
+        const ang = a * (TWO_PI / 12);
+        const x1 = cos(ang) * sh.s * 0.28, y1 = sin(ang) * sh.s * 0.28;
+        const x2 = cos(ang) * sh.s * 0.4,  y2 = sin(ang) * sh.s * 0.4;
+        line(x1, y1, x2, y2);
+      }
+    } else if (sh.t === 'pill') {
+      rectMode(CENTER);
+      rect(0, 0, sh.s, sh.s * 0.4, sh.s * 0.2);
+      rectMode(CORNER);
+      noStroke();
+      stroke(PALETTE.paper);
+      strokeWeight(2);
+      line(-sh.s * 0.18, sh.s * 0.14, sh.s * 0.18, -sh.s * 0.14);
+    } else if (sh.t === 'squig') {
+      noFill();
+      strokeCap(ROUND);
+      // 黑色硬阴影（错位）
+      stroke(PALETTE.ink);
+      strokeWeight(5);
+      beginShape();
+      for (let i = 0; i <= 6; i++) {
+        vertex(-sh.s / 2 + (i * sh.s) / 6 + 3, sin(i * 1.1) * 7 + 3);
+      }
+      endShape();
+      // 彩色波浪线
+      stroke(sh.col);
+      strokeWeight(5);
+      beginShape();
+      for (let i = 0; i <= 6; i++) {
+        vertex(-sh.s / 2 + (i * sh.s) / 6, sin(i * 1.1) * 7);
+      }
+      endShape();
+    }
+    pop();
+  }
   pop();
 }
 
 function drawMenu() {
+  drawMenuShapes();
+
   push();
   textAlign(CENTER, CENTER);
   noStroke();
 
-  fill(PALETTE.text);
-  textSize(52);
-  text('双人对撞球', width / 2, height / 2 - 150);
+  // 标题：三层同向硬阴影（Memphis 招牌，docs/DESIGN.md §5.2）
+  // 偏移统一向右下（+4 ink、+8 coral），避免方向错位导致小屏糊字/重影。
+  // 逐层显式设置 textSize，避免 p5 textFont 不可用时回退导致字号被吞。
+  noStroke();
+  textSize(58);
+  fill(PALETTE.coral);
+  text('双人对撞球', width / 2 + 8, height / 2 - 144);
+  textSize(58);
+  fill(PALETTE.ink);
+  text('双人对撞球', width / 2 + 4, height / 2 - 148);
+  textSize(58);
+  fill(PALETTE.paper);
+  text('双人对撞球', width / 2, height / 2 - 152);
 
-  fill(PALETTE.textDim);
-  textSize(16);
-  text('两人各守一边，用板子把球打回去 · 选择难度开始', width / 2, height / 2 - 100);
+  // 副标题徽章（黑底纸字，旋转 -2°）
+  textSize(15);
+  const sub = '两人各守一边 · 板子把球打回去 · 先到 5 分获胜';
+  const sw = textWidth(sub) + 40;
+  push();
+  translate(width / 2, height / 2 - 96);
+  rotate(radians(-2));
+  fill(PALETTE.ink);
+  rect(-sw / 2, -18, sw, 36, 8);
+  fill(PALETTE.sun);
+  text(sub, 0, 3);
+  pop();
 
+  // 难度按钮（Memphis 贴纸卡片）
   const btns = menuButtonRects();
+  const btnCols = [PALETTE.coral, PALETTE.teal, PALETTE.blue];
   for (let i = 0; i < btns.length; i++) {
     const b = btns[i];
     const isCur = i === state.difficultyIndex;
+    const col = btnCols[i % btnCols.length];
 
-    fill(isCur ? PALETTE.p1Dark : PALETTE.arena);
-    stroke(isCur ? PALETTE.p1 : PALETTE.arenaEdge);
-    strokeWeight(2);
+    // 硬阴影（贴纸凸起）
+    stroke(PALETTE.ink);
+    strokeWeight(0);
+    fill(PALETTE.ink);
+    rect(b.x + 6, b.y + 6, b.w, b.h, 12);
+
+    // 卡片主体：白底 + 彩描边
+    fill(PALETTE.card);
+    stroke(isCur ? col : PALETTE.ink);
+    strokeWeight(isCur ? 4 : 3);
     rect(b.x, b.y, b.w, b.h, 12);
 
+    // 难度色标签（左上角小圆点）
     noStroke();
-    fill(isCur ? PALETTE.p1 : PALETTE.text);
-    textSize(24);
-    text(b.data.name, b.x + b.w / 2, b.y + b.h / 2 - 12);
+    fill(col);
+    circle(b.x + 20, b.y + 20, 14);
+    fill(PALETTE.ink);
+    circle(b.x + 20, b.y + 20, 5);
 
-    fill(PALETTE.textDim);
+    // 名称
+    noStroke();
+    fill(PALETTE.ink);
+    textSize(24);
+    text(b.data.name, b.x + b.w / 2, b.y + b.h / 2 - 14);
+
+    // 描述
+    fill(PALETTE.inkSoft);
     textSize(13);
-    text(b.data.desc, b.x + b.w / 2, b.y + b.h / 2 + 18);
+    text(b.data.desc, b.x + b.w / 2, b.y + b.h / 2 + 16);
+
+    // 当前选中标记：右上角黑底胶囊徽章（不与名称冲突）
+    if (isCur) {
+      push();
+      translate(b.x + b.w - 8, b.y + 8);
+      const tag = '当前';
+      textStyle(BOLD);
+      textSize(11);
+      const tw = textWidth(tag) + 18;
+      rectMode(CORNER);
+      noStroke();
+      fill(PALETTE.ink);
+      rect(-tw, -2, tw, 16, 5);
+      fill(col);
+      textAlign(RIGHT, CENTER);
+      text(tag, -6, 6);
+      textStyle(NORMAL);
+      pop();
+    }
   }
   pop();
 }
