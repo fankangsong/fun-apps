@@ -1,0 +1,105 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Squiggle Club · Nº 064</title>
+<style>
+  :root{
+    --paper:#f6f1e7;--ink:#161616;--coral:#ff6b6b;--teal:#2ec4b6;--sun:#ffd23f;--blue:#3a86ff;--pink:#ff8fab;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  html,body{height:100%}
+  body{background:var(--paper);overflow:hidden;font-family:"Avenir Next","Segoe UI",system-ui,sans-serif;color:var(--ink);
+    -webkit-font-smoothing:antialiased}
+  body::before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.8;
+    background-image:
+      radial-gradient(#16161680 1px, transparent 1.6px),
+      radial-gradient(#16161650 1px, transparent 1.6px);
+    background-size:34px 34px,54px 54px;background-position:0 0,17px 27px}
+
+  .marquee{position:fixed;top:0;left:0;right:0;z-index:8;background:var(--ink);color:var(--sun);overflow:hidden;
+    font-size:12px;letter-spacing:.34em;text-transform:uppercase;padding:9px 0}
+  .marquee .in{display:inline-block;white-space:nowrap;animation:mq 18s linear infinite}
+  @keyframes mq{to{transform:translateX(-50%)}}
+
+  .sh{position:absolute;cursor:pointer;transition:transform .35s cubic-bezier(.3,1.6,.5,1);will-change:transform}
+  .sh:hover{transform:rotate(var(--hr,8deg)) scale(1.12)}
+  .sh:active{transform:scale(.94)}
+  svg{display:block;overflow:visible}
+
+  .title{position:fixed;left:50%;top:50%;translate:-50% -50%;z-index:6;text-align:center;pointer-events:none}
+  .title h1{font-size:clamp(44px,9vw,110px);font-weight:900;letter-spacing:-.01em;line-height:.95;
+    color:var(--paper);
+    text-shadow:
+      4px 4px 0 var(--ink),
+      8px 8px 0 var(--coral)}
+  .title .pop{color:var(--sun);text-shadow:4px 4px 0 var(--ink),8px 8px 0 var(--blue)}
+  .title p{margin-top:20px;font-size:12.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;
+    background:var(--ink);color:var(--paper);display:inline-block;padding:9px 18px;transform:rotate(-2deg)}
+  .corner{position:fixed;bottom:22px;left:26px;z-index:7;font-size:10.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:#6d675c}
+  .corner2{position:fixed;bottom:22px;right:26px;z-index:7;font-size:10.5px;font-weight:700;letter-spacing:.3em;text-transform:uppercase;color:#6d675c}
+  @media (max-width:640px){.corner2{display:none}}
+  @media (prefers-reduced-motion:reduce){.marquee .in{animation:none}.sh{transition:none}}
+</style>
+</head>
+<body>
+  <div class="marquee"><div class="in" id="mq"></div></div>
+  <div class="title">
+    <h1>SQUIGGLE<br><span class="pop">CLUB</span></h1>
+    <p>no rules · only vibes</p>
+  </div>
+  <div class="corner">memphis society · est. 1981-ish</div>
+  <div class="corner2">click shapes to repaint · nº 064</div>
+
+<script>
+(function(){
+  var COLS=['#ff6b6b','#2ec4b6','#ffd23f','#3a86ff','#ff8fab','#161616'];
+  var mq=document.getElementById('mq');
+  var txt='NO RULES · ONLY VIBES · SQUIGGLE CLUB · ';
+  mq.textContent=txt.repeat(12);
+
+  var DEFS=[
+    /* squiggle */
+    function(c){return {w:150,h:60,html:'<svg width="150" height="60"><path d="M6 40 Q 22 8, 40 34 T 76 32 T 112 30 T 146 26" fill="none" stroke="'+c+'" stroke-width="11" stroke-linecap="round"/></svg>'};},
+    /* triangle */
+    function(c){return {w:90,h:82,html:'<svg width="90" height="82"><polygon points="45,4 88,78 2,78" fill="'+c+'"/></svg>'};},
+    /* dotted circle */
+    function(c){return {w:96,h:96,html:'<svg width="96" height="96"><circle cx="48" cy="48" r="42" fill="'+c+'"/><circle cx="48" cy="48" r="24" fill="none" stroke="#f6f1e7" stroke-width="6" stroke-dasharray="2 12" stroke-linecap="round"/></svg>'};},
+    /* half circle */
+    function(c){return {w:120,h:62,html:'<svg width="120" height="62"><path d="M2 60 A 58 58 0 0 1 118 60 Z" fill="'+c+'"/></svg>'};},
+    /* zigzag bar */
+    function(c){return {w:160,h:44,html:'<svg width="160" height="44"><polyline points="6,34 30,8 54,34 78,8 102,34 126,8 150,34" fill="none" stroke="'+c+'" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>'};},
+    /* pill with stripes */
+    function(c){return {w:130,h:56,html:'<svg width="130" height="56"><rect x="4" y="4" width="122" height="48" rx="24" fill="'+c+'"/><g stroke="#f6f1e7" stroke-width="7" stroke-linecap="round"><path d="M42 12 L28 44"/><path d="M70 12 L56 44"/><path d="M98 12 L84 44"/></g></svg>'};},
+    /* arc fan */
+    function(c){return {w:120,h:66,html:'<svg width="120" height="66"><path d="M6 62 A 54 54 0 0 1 114 62" fill="none" stroke="'+c+'" stroke-width="10"/><path d="M28 62 A 32 32 0 0 1 92 62" fill="none" stroke="#161616" stroke-width="8"/></svg>'};}
+  ];
+  var SPOTS=[
+    [7,16,-6],[20,64,4],[78,14,8],[86,58,-5],[12,82,6],[64,78,-8],[42,12,10],[90,84,4],[30,32,-4],[58,44,6]
+  ];
+  SPOTS.forEach(function(s,i){
+    var d=DEFS[i%DEFS.length],ci=i%5;
+    var el=document.createElement('div');
+    el.className='sh';
+    el.style.left=s[0]+'%';el.style.top=s[1]+'%';
+    el.style.setProperty('--hr',s[2]+'deg');
+    el.style.transform='rotate('+s[2]+'deg)';
+    el.dataset.rot=s[2];el.dataset.ci=ci;
+    el.innerHTML=d(COLS[ci]).html;
+    el.addEventListener('click',function(){
+      var ci2=(+el.dataset.ci+1)%5;
+      el.dataset.ci=ci2;
+      var rot=(+el.dataset.rot)+22;
+      el.dataset.rot=rot;
+      el.innerHTML=d(COLS[ci2]).html;
+      el.style.transform='rotate('+rot+'deg) scale(1.12)';
+      setTimeout(function(){el.style.transform='rotate('+rot+'deg)';},240);
+    });
+    document.body.appendChild(el);
+  });
+})();
+</script>
+</body>
+</html>

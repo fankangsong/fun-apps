@@ -4,215 +4,382 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <title>小游戏合集 · p5.js + Matter.js</title>
-  <script>p5 && (p5.disableFriendlyErrors = true);</script>
+  <title>FUN APPS · 游乐合集</title>
   <style>
     :root {
-      --bg: #0e1116;
-      --bg-soft: #151b24;
-      --card: #1b2230;
-      --card-hover: #232c3d;
-      --line: #2a3445;
-      --text: #c8d4e0;
-      --muted: #7e8da0;
-      --accent: #7fd4ff;
-      --accent-2: #ff8a5b;
+      --paper: #f6f1e7;
+      --ink: #161616;
+      --coral: #ff6b6b;
+      --teal: #2ec4b6;
+      --sun: #ffd23f;
+      --blue: #3a86ff;
+      --pink: #ff8fab;
+      --card: #fffdf6;
     }
-    * { box-sizing: border-box; }
-    html, body {
-      margin: 0;
-      padding: 0;
-      min-height: 100%;
-      background: radial-gradient(1200px 600px at 50% -10%, #16202e 0%, var(--bg) 60%);
-      color: var(--text);
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+    html, body { min-height: 100%; }
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
       -webkit-touch-callout: none;
       -webkit-user-select: none;
       user-select: none;
-      -webkit-font-smoothing: antialiased;
+      overscroll-behavior: none;
     }
+    /* Memphis 波点纹理（固定层，内容均在其上） */
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: 0;
+      pointer-events: none; opacity: .8;
+      background-image:
+        radial-gradient(#16161680 1px, transparent 1.6px),
+        radial-gradient(#16161650 1px, transparent 1.6px);
+      background-size: 34px 34px, 54px 54px;
+      background-position: 0 0, 17px 27px;
+    }
+
+    /* ===================== 顶部滚动字幕 ===================== */
+    .marquee {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      background: var(--ink); color: var(--sun); overflow: hidden;
+      font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase;
+      padding: 9px 0; padding-top: calc(9px + env(safe-area-inset-top, 0));
+    }
+    .marquee .in { display: inline-block; white-space: nowrap; animation: mq 22s linear infinite; }
+    @keyframes mq { to { transform: translateX(-50%); } }
+
+    /* ===================== 首屏游乐场 ===================== */
+    .hero {
+      position: relative; overflow: hidden;
+      min-height: 78vh; min-height: 78dvh;
+      display: flex; align-items: center; justify-content: center;
+      padding: calc(56px + env(safe-area-inset-top, 0)) 16px 72px;
+    }
+    .title { position: relative; z-index: 6; text-align: center; pointer-events: none; }
+    .title h1 {
+      font-size: clamp(46px, 11vw, 108px);
+      font-weight: 900; letter-spacing: -.01em; line-height: .95;
+      color: var(--paper);
+      text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--coral);
+    }
+    .title .pop { color: var(--sun); text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--blue); }
+    .badge {
+      margin-top: 26px; display: inline-block;
+      font-size: clamp(11px, 2.6vw, 13px); font-weight: 700;
+      letter-spacing: .3em; text-transform: uppercase;
+      background: var(--ink); color: var(--paper);
+      padding: 10px 20px; transform: rotate(-2deg);
+    }
+    .cue {
+      pointer-events: auto;
+      display: inline-flex; align-items: center; justify-content: center;
+      margin-top: 28px; width: 48px; height: 48px; border-radius: 50%;
+      background: var(--sun); border: 3px solid var(--ink); color: var(--ink);
+      font-size: 20px; font-weight: 900; text-decoration: none;
+      box-shadow: 0 5px 0 var(--ink); transform: rotate(3deg);
+      touch-action: manipulation;
+      transition: transform .25s cubic-bezier(.3, 1.6, .5, 1), box-shadow .25s;
+    }
+    .cue:hover { transform: rotate(0deg) translateY(2px); box-shadow: 0 3px 0 var(--ink); }
+    .cue:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
+    .cue:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+
+    /* 散落 Memphis 图形：点按换色 + 旋转 */
+    .sh {
+      position: absolute; z-index: 5; cursor: pointer;
+      touch-action: manipulation; will-change: transform;
+      transition: transform .35s cubic-bezier(.3, 1.6, .5, 1), rotate .35s cubic-bezier(.3, 1.6, .5, 1);
+    }
+    @media (hover: hover) { .sh:hover { transform: scale(1.12); } }
+    .sh:active { transform: scale(.94); }
+    .sh svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+    .corner {
+      position: absolute; bottom: 20px; z-index: 7;
+      font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+      text-transform: uppercase; color: #6d675c;
+    }
+    .corner-l { left: 24px; }
+    .corner-r { right: 24px; }
+    @media (max-width: 640px) { .corner-r { display: none; } }
+
+    /* ===================== 游戏目录 ===================== */
     .wrap {
-      max-width: 960px;
-      margin: 0 auto;
-      padding: 48px 24px 64px;
+      position: relative; z-index: 1;
+      max-width: 1120px; margin: 0 auto;
+      padding: 0 clamp(16px, 4vw, 40px);
     }
-    header { text-align: center; margin-bottom: 40px; }
-    header h1 {
-      margin: 0;
-      font-size: clamp(26px, 5vw, 40px);
-      letter-spacing: 1px;
-      background: linear-gradient(90deg, var(--accent), var(--accent-2));
-      -webkit-background-clip: text;
-      background-clip: text;
-      color: transparent;
+    .games { padding: clamp(14px, 4vw, 30px) 0 clamp(44px, 6vw, 68px); scroll-margin-top: 64px; }
+    .games-head { text-align: center; margin-bottom: clamp(30px, 5vw, 46px); }
+    .games-head h2 {
+      display: inline-block; transform: rotate(-1.5deg);
+      background: var(--ink); color: var(--paper);
+      font-size: clamp(15px, 3vw, 19px); font-weight: 900;
+      letter-spacing: .3em; text-transform: uppercase;
+      padding: 13px 24px;
     }
-    header p {
-      margin: 10px 0 0;
-      color: var(--muted);
-      font-size: 14px;
-    }
-    .note {
-      display: inline-block;
-      margin-top: 16px;
-      padding: 6px 14px;
-      border: 1px solid var(--line);
-      border-radius: 999px;
-      font-size: 12px;
-      color: var(--muted);
-    }
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-      gap: 20px;
-    }
+    .games-head h2 b { color: var(--sun); font-weight: 900; }
+    .games-head .squiggle { display: block; margin: 20px auto 0; }
+
+    .grid { display: grid; grid-template-columns: 1fr; gap: clamp(24px, 3.5vw, 34px); }
+    @media (min-width: 680px) { .grid { grid-template-columns: 1fr 1fr; } }
+
     .card {
-      position: relative;
-      display: block;
-      text-decoration: none;
-      color: inherit;
-      background: var(--card);
-      border: 1px solid var(--line);
-      border-radius: 16px;
-      overflow: hidden;
-      transition: transform .18s ease, border-color .18s ease, background .18s ease;
-      cursor: pointer;
+      position: relative; display: block;
+      background: var(--card); color: var(--ink); text-decoration: none;
+      border: 3px solid var(--ink); border-radius: 18px;
+      box-shadow: 7px 7px 0 var(--c, var(--ink));
+      padding: clamp(20px, 3vw, 28px);
+      transform: rotate(var(--tilt, 0deg));
+      touch-action: manipulation;
+      transition: transform .28s cubic-bezier(.3, 1.6, .5, 1), box-shadow .28s;
+      animation: pop .55s cubic-bezier(.3, 1.6, .5, 1) both;
+      animation-delay: var(--d, 0s);
     }
-    .card:hover, .card:focus-visible {
-      transform: translateY(-4px);
-      background: var(--card-hover);
-      border-color: var(--accent);
-      outline: none;
+    @media (hover: hover) {
+      .card:hover { transform: rotate(0deg) translateY(-5px); box-shadow: 9px 12px 0 var(--c, var(--ink)); }
     }
-    .thumb {
-      height: 140px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-size: 52px;
-      background:
-        radial-gradient(circle at 30% 30%, rgba(127,212,255,.18), transparent 60%),
-        radial-gradient(circle at 70% 70%, rgba(255,138,91,.16), transparent 60%),
-        var(--bg-soft);
-      border-bottom: 1px solid var(--line);
+    .card:active { transform: rotate(var(--tilt, 0deg)) scale(.97); }
+    .card:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+    @keyframes pop {
+      from { opacity: 0; transform: rotate(var(--tilt, 0deg)) translateY(26px) scale(.96); }
     }
-    .meta { padding: 16px 18px 18px; }
-    .meta h2 {
-      margin: 0 0 6px;
-      font-size: 18px;
-      font-weight: 700;
+
+    .card-top { display: flex; align-items: center; gap: 14px; }
+    .card-icon {
+      flex-shrink: 0;
+      display: flex; align-items: center; justify-content: center;
+      width: 56px; height: 56px; border-radius: 50%;
+      background: var(--c, var(--sun)); border: 3px solid var(--ink);
+      font-size: 26px; font-weight: 900; line-height: 1;
+      box-shadow: inset 0 -4px 0 rgba(22, 22, 22, .18);
     }
-    .meta .desc {
-      margin: 0;
-      font-size: 13px;
-      line-height: 1.5;
-      color: var(--muted);
-      min-height: 38px;
+    .card-names { min-width: 0; }
+    .card-names h2 { font-size: clamp(20px, 3.4vw, 24px); font-weight: 900; letter-spacing: .04em; }
+    .card-en {
+      display: block; margin-top: 3px;
+      font-size: 11px; font-weight: 700; letter-spacing: .14em;
+      text-transform: uppercase; color: #6d675c;
     }
-    .meta .tags { margin-top: 12px; display: flex; flex-wrap: wrap; gap: 6px; }
+    .card-num {
+      flex-shrink: 0; margin-left: auto; align-self: flex-start;
+      background: var(--c, var(--sun)); border: 2px solid var(--ink); border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 12px; font-weight: 900; letter-spacing: .08em;
+    }
+    .card-desc {
+      margin: 16px 0;
+      font-size: clamp(13.5px, 2.6vw, 15.5px); line-height: 1.7;
+      color: #3c3a33; text-align: left;
+    }
+    .tags { display: flex; flex-wrap: wrap; gap: 8px; }
     .tag {
-      font-size: 11px;
-      padding: 3px 9px;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      color: var(--muted);
+      font-size: 11px; font-weight: 700; letter-spacing: .08em;
+      padding: 4px 11px; border: 2px solid var(--ink); border-radius: 999px;
+      background: var(--paper);
     }
-    .tag.accent { color: var(--accent); border-color: rgba(127,212,255,.4); }
-    footer {
-      margin-top: 48px;
-      text-align: center;
-      font-size: 12px;
-      color: var(--muted);
+    .tag.first { background: var(--ink); color: var(--paper); }
+
+    /* ===================== 页脚 ===================== */
+    .foot {
+      position: relative; z-index: 1;
+      max-width: 1120px; margin: 0 auto;
+      display: flex; justify-content: space-between; align-items: center; gap: 12px;
+      border-top: 3px solid var(--ink);
+      margin-top: 8px; padding: 22px clamp(16px, 4vw, 40px) calc(28px + env(safe-area-inset-bottom, 0));
+      font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+      text-transform: uppercase; color: #6d675c;
     }
-    @media (max-width: 480px) {
-      .wrap { padding: 32px 16px 48px; }
+    .foot .fin {
+      font-size: 11px; color: var(--ink); letter-spacing: .25em;
+      background: var(--sun); border: 2px solid var(--ink);
+      padding: 5px 12px; transform: rotate(-2deg);
+    }
+    @media (max-width: 640px) { .foot .r { display: none; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      .marquee .in { animation: none; }
+      .sh, .card, .cue { transition: none; animation: none; }
     }
   </style>
 </head>
 <body>
-  <div class="wrap">
-    <header>
-      <h1>小游戏合集</h1>
-      <p>p5.js + Matter.js · 2D 物理小游戏 · 桌面 / iPad Safari</p>
-      <span class="note" id="count">加载中…</span>
-    </header>
+  <div class="marquee" aria-hidden="true"><div class="in" id="mq"></div></div>
 
-    <main class="grid" id="grid"></main>
+  <section class="hero" id="hero">
+    <div class="title">
+      <h1>FUN<br><span class="pop">APPS</span></h1>
+      <p class="badge">无规则 · 只管好玩</p>
+      <br>
+      <a class="cue" href="#games" aria-label="滚动到游戏目录">↓</a>
+    </div>
+    <div class="corner corner-l" aria-hidden="true">fun apps society · est. 2026</div>
+    <div class="corner corner-r" aria-hidden="true">点一点 · 图形会换色 · nº 07</div>
+  </section>
 
-    <footer>
-      点击卡片进入游戏 · 所有游戏均无需本地服务器，离线可直接运行
-    </footer>
-  </div>
+  <main class="wrap">
+    <section class="games" id="games">
+      <header class="games-head">
+        <h2>游戏目录 <b>· 四件可玩之物</b></h2>
+        <svg class="squiggle" width="170" height="30" viewBox="0 0 170 30" aria-hidden="true">
+          <path d="M5 20 Q 20 4, 35 18 T 65 16 T 95 14 T 125 12 T 165 10" fill="none" stroke="#161616" stroke-width="9" stroke-linecap="round" transform="translate(3,3)"/>
+          <path d="M5 20 Q 20 4, 35 18 T 65 16 T 95 14 T 125 12 T 165 10" fill="none" stroke="#ffd23f" stroke-width="9" stroke-linecap="round"/>
+        </svg>
+      </header>
+      <div class="grid" id="grid"></div>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span>fun apps society · est. 2026</span>
+    <span class="fin">FIN · 玩得开心</span>
+    <span class="r">memphis vibes · 双击即玩 · nº 07</span>
+  </footer>
 
   <script>
     // =====================================================================
-    // 游戏清单：如新增游戏，在此追加一项即可（页面自动渲染）。
-    //  - dir : apps/ 下的相对目录名
-    //  - entry : 该目录下的入口 html 文件名
-    //  - icon : 卡片缩略图 emoji
-    //  - name / desc : 展示用名称与简介
-    //  - tags : 卡片底部标签
+    // 应用清单：新增应用在此追加一项（dir / entry / icon / name / en / desc / tags）
     // =====================================================================
     const GAMES = [
       {
         dir: 'basketball-2d',
         entry: 'basketball.html',
         icon: '🏀',
-        name: '投篮大师',
-        desc: '弹弓式投篮，自由摆放位置，距离越远得分越高，空心球翻倍。',
-        tags: ['物理投掷', '单人对战', '计分'],
+        name: '投石机',
+        en: 'the basket-thrower',
+        desc: '弹弓式投石机，杠杆配重带动投掷，距离越远得分越高，空心球翻倍。',
+        tags: ['物理', '单人', '计分'],
       },
       {
         dir: 'duel-balls',
         entry: 'index.html',
         icon: '⚡',
-        name: '双人对撞球',
-        desc: '上下分屏类 Pong 双人对战，板子接球回击，难度可选。',
-        tags: ['双人对战', 'Pong', '难度分级'],
+        name: '双钟摆',
+        en: 'the dual pendulum',
+        desc: '上下分屏类 Pong 双人对战，板子接球回击，难度可选，能量越大震幅越猛。',
+        tags: ['对战', 'Pong', '难度'],
       },
       {
         dir: 'pi-explorer',
         entry: 'index.html',
         icon: 'π',
-        name: 'π 实验室',
+        name: '圆规与直尺',
+        en: 'compass & ruler',
         desc: '四场景交互式理解圆周率：滚轮展开定义、多圆对比常数性、分数搜索无理性、割圆术逼近史。',
-        tags: ['数学可视化', '交互实验', 'π 的四个侧面'],
+        tags: ['数学', '交互', 'π'],
       },
       {
         dir: 'circle-area',
         entry: 'index.html',
-        icon: '🍕',
-        name: '圆的面积',
+        icon: '◐',
+        name: '切割齿轮',
+        en: 'the cutting gear',
         desc: '把圆剪开重拼成长方形，直观推导 S = πr²。调节半径与扇形数，观察面积不变。',
-        tags: ['数学可视化', '剪拼推导', 'πr²'],
+        tags: ['数学', '推导', 'πr²'],
       },
     ];
 
-    const grid = document.getElementById('grid');
-    const countEl = document.getElementById('count');
+    (function () {
+      'use strict';
+      var COLS = ['#ff6b6b', '#2ec4b6', '#ffd23f', '#3a86ff', '#ff8fab'];
+      var CARD_COLS = ['#ff6b6b', '#2ec4b6', '#3a86ff', '#ff8fab'];
 
-    GAMES.forEach((g) => {
-      const url = g.dir + '/' + g.entry;
-      const card = document.createElement('a');
-      card.className = 'card';
-      card.href = url;
-      card.setAttribute('aria-label', g.name);
+      /* ---------- 顶部滚动字幕 ---------- */
+      document.getElementById('mq').textContent =
+        'FUN APPS · 无规则 · 只管好玩 · 双击即玩 · OFFLINE OK · '.repeat(24);
 
-      const tagsHtml = (g.tags || [])
-        .map((t, i) => `<span class="tag${i === 0 ? ' accent' : ''}">${t}</span>`)
-        .join('');
+      /* ---------- Memphis 图形定义 ---------- */
+      var DEFS = [
+        /* squiggle 波浪线 */
+        function (c) { return { w: 150, h: 60, html: '<svg viewBox="0 0 150 60"><path d="M6 40 Q 22 8, 40 34 T 76 32 T 112 30 T 146 26" fill="none" stroke="' + c + '" stroke-width="11" stroke-linecap="round"/></svg>' }; },
+        /* triangle 三角 */
+        function (c) { return { w: 90, h: 82, html: '<svg viewBox="0 0 90 82"><polygon points="45,4 88,78 2,78" fill="' + c + '"/></svg>' }; },
+        /* dotted circle 虚线圆 */
+        function (c) { return { w: 96, h: 96, html: '<svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="42" fill="' + c + '"/><circle cx="48" cy="48" r="24" fill="none" stroke="#f6f1e7" stroke-width="6" stroke-dasharray="2 12" stroke-linecap="round"/></svg>' }; },
+        /* half circle 半圆 */
+        function (c) { return { w: 120, h: 62, html: '<svg viewBox="0 0 120 62"><path d="M2 60 A 58 58 0 0 1 118 60 Z" fill="' + c + '"/></svg>' }; },
+        /* zigzag 锯齿 */
+        function (c) { return { w: 160, h: 44, html: '<svg viewBox="0 0 160 44"><polyline points="6,34 30,8 54,34 78,8 102,34 126,8 150,34" fill="none" stroke="' + c + '" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>' }; },
+        /* pill with stripes 条纹胶囊 */
+        function (c) { return { w: 130, h: 56, html: '<svg viewBox="0 0 130 56"><rect x="4" y="4" width="122" height="48" rx="24" fill="' + c + '"/><g stroke="#f6f1e7" stroke-width="7" stroke-linecap="round"><path d="M42 12 L28 44"/><path d="M70 12 L56 44"/><path d="M98 12 L84 44"/></g></svg>' }; },
+        /* arc fan 扇形弧 */
+        function (c) { return { w: 120, h: 66, html: '<svg viewBox="0 0 120 66"><path d="M6 62 A 54 54 0 0 1 114 62" fill="none" stroke="' + c + '" stroke-width="10"/><path d="M28 62 A 32 32 0 0 1 92 62" fill="none" stroke="#161616" stroke-width="8"/></svg>' }; }
+      ];
+      var SPOTS = [
+        [6, 16, -6], [19, 66, 4], [78, 13, 8], [87, 60, -5], [11, 84, 6],
+        [63, 80, -8], [40, 12, 10], [91, 86, 4], [27, 38, -4], [57, 48, 6]
+      ];
 
-      card.innerHTML = `
-        <div class="thumb">${g.icon || '🎮'}</div>
-        <div class="meta">
-          <h2>${g.name}</h2>
-          <p class="desc">${g.desc || ''}</p>
-          <div class="tags">${tagsHtml}</div>
-        </div>
-      `;
-      grid.appendChild(card);
-    });
+      var hero = document.getElementById('hero');
 
-    countEl.textContent = `共 ${GAMES.length} 款游戏`;
+      function buildShapes() {
+        Array.prototype.forEach.call(document.querySelectorAll('.sh'), function (e) { e.remove(); });
+        var w = window.innerWidth;
+        var s = w < 640 ? 0.72 : 1;      // 小屏缩小图形
+        var n = w < 520 ? 6 : SPOTS.length; // 极窄屏减少数量
+        SPOTS.slice(0, n).forEach(function (sp, i) {
+          var di = i % DEFS.length, ci = i % 5;
+          var d = DEFS[di](COLS[ci]);
+          var el = document.createElement('div');
+          el.className = 'sh';
+          el.style.left = sp[0] + '%';
+          el.style.top = sp[1] + '%';
+          el.style.width = (d.w * s) + 'px';
+          el.style.height = (d.h * s) + 'px';
+          el.style.rotate = sp[2] + 'deg';
+          el.dataset.rot = sp[2]; el.dataset.ci = ci; el.dataset.di = di;
+          el.setAttribute('aria-hidden', 'true');
+          el.innerHTML = d.html;
+          el.addEventListener('click', function () {
+            var c2 = (+el.dataset.ci + 1) % 5;
+            el.dataset.ci = c2;
+            var r = (+el.dataset.rot) + 22;
+            el.dataset.rot = r;
+            el.innerHTML = DEFS[+el.dataset.di](COLS[c2]).html;
+            el.style.rotate = r + 'deg';
+            el.style.transform = 'scale(1.15)';
+            setTimeout(function () { el.style.transform = ''; }, 240);
+          });
+          hero.appendChild(el);
+        });
+      }
+      buildShapes();
+      var rt;
+      window.addEventListener('resize', function () {
+        clearTimeout(rt);
+        rt = setTimeout(buildShapes, 180);
+      });
+
+      /* ---------- 游戏卡片 ---------- */
+      var grid = document.getElementById('grid');
+      GAMES.forEach(function (g, i) {
+        var a = document.createElement('a');
+        a.className = 'card';
+        a.href = g.dir + '/' + g.entry;
+        a.setAttribute('aria-label', g.name);
+        a.style.setProperty('--c', CARD_COLS[i % CARD_COLS.length]);
+        a.style.setProperty('--tilt', (i % 2 ? 1.2 : -1.2) + 'deg');
+        a.style.setProperty('--d', (i * 0.08) + 's');
+        var tags = (g.tags || []).map(function (t, k) {
+          return '<span class="tag' + (k === 0 ? ' first' : '') + '">' + t + '</span>';
+        }).join('');
+        var num = ('0' + (i + 1)).slice(-2);
+        a.innerHTML =
+          '<div class="card-top">' +
+            '<span class="card-icon" aria-hidden="true">' + g.icon + '</span>' +
+            '<div class="card-names"><h2>' + g.name + '</h2>' +
+              (g.en ? '<span class="card-en">' + g.en + '</span>' : '') +
+            '</div>' +
+            '<span class="card-num" aria-hidden="true">№ ' + num + '</span>' +
+          '</div>' +
+          '<p class="card-desc">' + (g.desc || '') + '</p>' +
+          '<div class="tags">' + tags + '</div>';
+        grid.appendChild(a);
+      });
+    })();
   </script>
 </body>
 </html>
