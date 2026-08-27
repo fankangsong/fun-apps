@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>滚轮 · 发现圆周率</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+<style> body { margin:0; background:#dff3ff; } </style>
+</head>
+<body>
+<script>
+
+// ================= 配置 =================
+const startX = 190;          // 直尺 0 刻度位置（= 轮子出发时的圆心）
+const D_MIN = 40, D_MAX = 170;
+
+// ================= 状态 =================
+let d = 100;           // 轮子直径（拖拽条控制）
+let x = 0;             // 轮子中心
+let targetX = null;
+let roll = 0;
+let turns = 0;
+let badgeTimer = 0;
+let stars = [];
+let dragging = false, dragDX = 0;
+let mode = 'none';     // 'none' | 'wheel' | 'slider'
+let hoverCell = -1;    // 鼠标悬停的直尺单元格编号（-1 = 无）
+
+let roadY, slider;
+
+const D = () => d;
+const R = () => d / 2;
+
+function setup() {
+  createCanvas(1000, 680);
+  roadY = 500;
+  slider = { x:760, y:36, w:216, h:52 };
+  x = startX;
+  textAlign(CENTER, CENTER);
+}
+
+// ================= 主循环 =================
+function draw() {
+  if (targetX !== null) {
+    x += (targetX - x) * 0.18;
+    if (abs(targetX - x) < 0.6) { x = targetX; targetX = null; }
+    syncRoll(true);
+  }
+  updateHover();
+
+  background('#dff3ff');
+  drawUI();
+  drawAngle();
+  drawRuler();
+  drawCaliper();       // 卡尺：随 hover 高亮呼应
+  drawReadout();
+  drawWheel();
+  drawStars();
+  drawBadge();
+}
+
+function syncRoll(celebrate) {
+  roll = x - startX;
+  const per = PI * D();
+  const nt = floor(roll / per);
+  while (turns < nt) {
+    turns++;
+    if (celebrate) { badgeTimer = 200; spawnStars(); }
+  }
+  if (turns > nt) turns = nt;
+}
+
+// ================= hover 检测：直尺单元格 =================
+function updateHover() {
+  hoverCell = -1;
+  if (mode !== 'none') return;                    // 拖动中不响应 hover
+  if (mouseY > roadY && mouseY < roadY + 84 && mouseX >= startX && mouseX < width) {
+    hoverCell = floor((mouseX - startX) / D());
+  }
+}
+
+// ================= 绘制：直尺 =================
+function drawRuler() {
+  noStroke(); fill('#fffbe6');
+  rect(startX - 190, roadY, width - startX + 196, 84, 6);
+  stroke('#455a64'); strokeWeight(3);
+  line(startX - 190, roadY + 1, width, roadY + 1);
+
+  textSize(30); textAlign(CENTER, CENTER);
+  for (let i = 0; ; i++) {
+    const tx = startX + i * D();
+    if (tx > width - 4) break;
+
+    const hovered = (i === hoverCell);
+    // 已滚过 → 淡色高亮；被 hover → 更亮的填充
+    if (hovered) {
+      noStroke(); fill('#ffe08a');
+      rect(tx + 1, roadY + 2, D() - 2, 82, 4);
+    } else if (roll > i * D() + 1) {
+      noStroke(); fill(255, 209, 102, 120);
+      rect(tx + 1, roadY + 2, D() - 2, 20);
+    }
+    stroke('#37474f'); strokeWeight(hovered ? 5 : 3);   // 主刻度
+    line(tx, roadY, tx, roadY + 46);
+    stroke('#90a4ae'); strokeWeight(2);                 // 1/4 细分刻度
+    for (let j = 1; j <= 3; j++) {
+      const mx = tx + j * D() / 4;
+      if (mx > width - 4) break;
+      line(mx, roadY, mx, roadY + 18);
+    }
+    noStroke(); fill(hovered ? '#d9480f' : '#37474f');
+    text(str(i), tx, roadY + 64);
+  }
+
+  // 整圈旗子
+  noStroke(); fill('#e63946'); textSize(19);
+  for (let k = 1; k <= turns; k++) {
+    text('🚩 第' + k + '圈到这里！', startX + k * PI * D(), roadY + 108);
+  }
+}
+
+// ================= 绘制：卡尺（轮宽 = 1 格）=================
+function drawCaliper() {
+  const hi = hoverCell >= 0;                    // 是否处于“呼应”状态
+  const cL = x - R(), cR = x + R();             // 轮子左、右缘
+
+  // ① 被悬停单元格的两条边，向上延伸虚线（与轮缘虚线视觉同款）
+  if (hi) {
+    const hx0 = startX + hoverCell * D();
+    const hx1 = hx0 + D();
+    stroke(217, 72, 15, hi ? 220 : 120); strokeWeight(hi ? 3 : 2);
+    drawingContext.setLineDash([6, 6]);
+    line(hx0, roadY, hx0, roadY - D() - 60);
+    line(hx1, roadY, hx1, roadY - D() - 60);
+    drawingContext.setLineDash([]);
+  }
+
+  // ② 轮缘虚线垂线（hover 时加粗提亮）
+  stroke(hi ? color(217, 72, 15) : color(42, 105, 140, 140));
+  strokeWeight(hi ? 3.5 : 2);
+  drawingContext.setLineDash([6, 6]);
+  line(cL, roadY - D() - 20, cL, roadY);
+  line(cR, roadY - D() - 20, cR, roadY);
+  drawingContext.setLineDash([]);
+
+  // ③ 双箭头标注线（hover 时闪烁强调）
+  const ay = roadY - D() - 34;
+  const pulse = hi ? (2 + sin(frameCount * 0.25)) : 0;
+  stroke(hi ? color(217, 72, 15) : color('#d9480f'));
+  strokeWeight(hi ? 4 + pulse : 3);
+  line(cL, ay, cR, ay);
+  for (const ex of [cL, cR]) {
+    const s = ex === cL ? 10 : -10;
+    line(ex, ay, ex + s, ay - 7);
+    line(ex, ay, ex + s, ay + 7);
+  }
+  noStroke(); fill(hi ? color(217, 72, 15) : '#d9480f');
+  textSize(hi ? 22 : 19);
+  text(hi ? '看！这一格的宽 = 轮子的宽（直径）'
+          : '轮子的宽 = 1 格',
+       x, ay - 16 - pulse);
+}
+
+// ================= 绘制：轮子 =================
+function drawWheel() {
+  const cy = roadY - R();
+  push();
+  translate(x, cy);
+  noStroke(); fill('#37474f'); circle(0, 0, D());
+  noStroke(); fill('#546e7a'); circle(0, 0, D() - 12);
+  rotate(roll / R());                          // 纯滚动
+  stroke('#cfd8dc'); strokeWeight(3);
+  for (let i = 0; i < 4; i++) { line(0, 0, 0, R() - 8); rotate(HALF_PI); }
+  stroke('#e63946'); strokeWeight(6);          // 标记点从正下方出发
+  line(0, 0, 0, R() - 6);
+  noStroke(); fill('#e63946'); circle(0, R() - 6, 15);
+  pop();
+
+  if (roll < 1) {
+    noStroke(); fill('#37474f'); textSize(19);
+    text('轮子中心对准 0 刻度，红色标记在最下面 ⬇  转一整圈，看走了几格？',
+         x + 240, roadY - D() - 20);
+  }
+}
+
+// ================= 滚动角度（实时） =================
+function drawAngle() {
+  const rad = roll / R();               // 滚动角（弧度）= 弧长 / 半径（纯滚动）
+  const deg = rad * 180 / PI;           // 转为角度
+  const full = floor(deg / 360);        // 已转满的圈数
+  const rem = deg - full * 360;         // 当前圈内的剩余角度
+
+  const px = 760, py = 100, pw = 216, ph = 152;
+  noStroke(); fill('#ffffff');
+  rect(px, py, pw, ph, 16);
+  stroke('#b0bec5'); strokeWeight(2); noFill();
+  rect(px, py, pw, ph, 16);
+
+  noStroke(); fill('#0277bd'); textSize(18); textAlign(LEFT, CENTER);
+  text('滚动角度（实时）', px + 16, py + 24);
+
+  // 一圈 360° 进度条
+  noStroke(); fill('#e0e6ea');
+  rect(px + 16, py + 46, pw - 32, 10, 5);
+  fill('#e63946');
+  rect(px + 16, py + 46, (pw - 32) * (rem / 360), 10, 5);
+
+  noStroke(); fill('#37474f'); textSize(34);
+  text(nf(deg, 1, 1) + '°', px + 16, py + 84);
+
+  noStroke(); fill('#546e7a'); textSize(16);
+  text((full > 0 ? full + ' 圈 + ' : '') + nf(rem, 1, 1) + '°  ≈ ' + nf(rad, 1, 2) + ' rad',
+       px + 16, py + 112);
+}
+
+// ================= 反馈层 =================
+function drawReadout() {
+  const cx = width / 2, cy = 215;                 // 信息中心（画布中央偏上，避开轮子路径）
+
+  // ===== 第一行：走过几格 =====
+  const cells = floor(roll / D());
+  const extra = roll - cells * D();
+  let s = '轮子在 0 刻度上，出发吧！';
+  if (roll > 1) s = extra < 2 ? ('正好走过 ' + cells + ' 格')
+                              : ('走过 ' + cells + ' 格 + 一小截');
+  noStroke(); fill('#37474f'); textSize(28);
+  text(s, cx, cy - 25);
+
+  // ===== 第二行：实时滚动圆周指数 =====
+  const laps  = roll / (PI * D());   // 转的圈数（连续，1 圈 = π）
+  const grids = roll / D();          // 走过的格数（连续，1 圈 = π 格）
+  noStroke(); fill('#0277bd'); textSize(21);
+  if (laps < 0.005) {
+    text('滚动圆周指数：转一整圈 = π ≈ 3.14 格', cx, cy + 25);
+  } else {
+    const ratio = grids / laps;      // 格数 ÷ 圈数 → 实时逼近 π
+    text('滚动圆周指数：' + nf(laps, 1, 2) + ' 圈 · ' + nf(grids, 1, 2) +
+         ' 格 · 格数÷圈数 = ' + nf(ratio, 1, 4) + ' ≈ π', cx, cy + 25);
+  }
+}
+
+function drawBadge() {
+  if (badgeTimer <= 0) return;
+  push();
+  translate(x, roadY - D() - 110);
+  scale(1 + 0.05 * sin(badgeTimer * 0.3));
+  fill('#ffd166'); stroke('#f4a261'); strokeWeight(4);
+  rect(-170, -36, 340, 72, 18);
+  noStroke(); fill('#6d4c00'); textSize(29);
+  text('🎉 3 格多一点！', 0, 0);
+  pop();
+  badgeTimer--;
+}
+
+function spawnStars() {
+  for (let i = 0; i < 26; i++)
+    stars.push({ x, y: roadY - D(), vx: random(-4, 4), vy: random(-9, -3), life: 60 });
+}
+function drawStars() {
+  textSize(20);
+  for (const s of stars) {
+    s.x += s.vx; s.y += s.vy; s.vy += 0.25; s.life--;
+    noStroke(); fill(255, 200, 80, s.life * 4);
+    text('⭐', s.x, s.y);
+  }
+  stars = stars.filter(s => s.life > 0);
+}
+
+// ================= UI：拖拽条与按钮 =================
+function sliderHandleX() {
+  return slider.x + 34 + (d - D_MIN) / (D_MAX - D_MIN) * (slider.w - 68);
+}
+function drawUI() {
+  noStroke(); fill('#0277bd'); textSize(22);
+  text('拖动轮子滚动 · 把鼠标放到直尺的一格上试试！', width / 2, 16);
+
+  noStroke(); fill('#37474f'); textSize(16); textAlign(LEFT, CENTER);
+  text('轮子大小', slider.x, slider.y - 16);
+  fill('#ffffff'); stroke('#b0bec5'); strokeWeight(2);
+  rect(slider.x, slider.y, slider.w, slider.h, 26);
+  noStroke();
+  for (let i = 0; i < slider.w - 68; i++) {
+    const t = i / (slider.w - 68);
+    fill(lerpColor(color('#90caf9'), color('#f4a261'), t));
+    rect(slider.x + 34 + i, slider.y + 14, 1, slider.h - 28);
+  }
+  const hx = sliderHandleX();
+  noStroke(); fill('#37474f');
+  circle(hx, slider.y + slider.h / 2, 44);
+  fill('#ffd166'); circle(hx, slider.y + slider.h / 2, 8 + (d - D_MIN) / (D_MAX - D_MIN) * 26);
+  textAlign(CENTER, CENTER);
+
+}
+
+// ================= 交互 =================
+function mousePressed() {
+  if (mouseX > slider.x && mouseX < slider.x + slider.w &&
+      mouseY > slider.y - 12 && mouseY < slider.y + slider.h + 12) {
+    mode = 'slider'; dragSlider(); return;
+  }
+  if (dist(mouseX, mouseY, x, roadY - R()) < R() + 30) {
+    mode = 'wheel'; dragging = true; dragDX = x - mouseX; targetX = null;
+  }
+}
+function mouseDragged() {
+  if (mode === 'slider') dragSlider();
+  else if (dragging) {
+    x = constrain(mouseX + dragDX, startX, width - 60);
+    syncRoll(true);
+  }
+}
+function mouseReleased() { dragging = false; mode = 'none'; }
+
+function dragSlider() {
+  const t = constrain((mouseX - slider.x - 34) / (slider.w - 68), 0, 1);
+  d = round(D_MIN + t * (D_MAX - D_MIN));
+  syncRoll(false);
+}
+
+function inRect(r) { return mouseX > r.x && mouseX < r.x + r.w && mouseY > r.y && mouseY < r.y + r.h; }
+</script>
+</body>
+</html>

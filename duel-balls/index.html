@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <!-- iPad Safari 适配：禁止双击缩放/回弹，保证画布全屏铺满 -->
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>双人对撞球 · p5.js + Matter.js</title>
+
+  <!-- 渲染库：p5.js；物理引擎：Matter.js（国内 CDN: BootCDN，固定版本避免 API 漂移） -->
+  <script src="https://cdn.bootcdn.net/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+  <script src="https://cdn.bootcdn.net/ajax/libs/matter-js/0.20.0/matter.min.js"></script>
+  <script>p5.disableFriendlyErrors = true;</script>
+
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #0e1116;
+      /* 防止 iOS 长按选择/高亮 */
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      /* 禁用 Safari 默认的触摸手势（滚动/缩放） */
+      touch-action: none;
+      overscroll-behavior: none;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <!-- 按依赖顺序加载模块：config -> state -> physics -> input -> render -> main -->
+  <script src="config.js"></script>
+  <script src="state.js"></script>
+  <script src="physics.js"></script>
+  <script src="input.js"></script>
+  <script src="render.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

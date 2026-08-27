@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<!-- iPad Safari 适配：禁止双击/双指缩放，viewport-fit=cover 铺满刘海屏 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>圆的面积可视化 · 剪拼推导 πr²</title>
+<script src="https://cdn.jsdelivr.net/npm/p5@1.9.0/lib/p5.min.js"></script>
+<script>p5.disableFriendlyErrors = true;</script>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    /* 防页面回弹（橡皮筋） */
+    overscroll-behavior: none;
+    /* 防 iOS 长按选中/弹出菜单 */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  body {
+    font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(135deg, #f5f0e8, #e8eef5);
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center;
+    padding: 20px 12px 40px;
+  }
+  header { text-align: center; margin-bottom: 16px; }
+  header h1 { font-size: 26px; color: #2c3e50; }
+  header p  { font-size: 14px; color: #7a8a9a; margin-top: 4px; }
+
+  .card {
+    background: #fff; border-radius: 16px;
+    box-shadow: 0 4px 20px rgba(0,0,0,.08);
+    padding: 16px; margin-bottom: 16px;
+    max-width: 940px; width: 100%;
+  }
+  #canvas-box { display: flex; justify-content: center; }
+  /* touch-action:none 只作用于画布：拖拽不触发页面滚动/缩放，同时不影响滑块的触控手势 */
+  #canvas-box canvas { touch-action: none; max-width: 100%; height: auto; border-radius: 8px; }
+
+  .controls {
+    display: flex; flex-wrap: wrap; gap: 20px 32px;
+    align-items: center; justify-content: center;
+  }
+  .ctrl { display: flex; flex-direction: column; gap: 4px; min-width: 220px; }
+  .ctrl label { font-size: 14px; color: #555; font-weight: bold; }
+  .ctrl label .val { color: #e74c3c; }
+  input[type=range] { width: 100%; accent-color: #3498db; height: 26px; }
+
+  #cutBtn {
+    padding: 12px 28px; font-size: 17px; font-weight: bold;
+    color: #fff; background: #e67e22; border: none;
+    border-radius: 10px; cursor: pointer;
+    transition: transform .1s, background .2s;
+  }
+  #cutBtn:hover { background: #d35400; }
+  #cutBtn:active { transform: scale(.96); }
+
+  .check { font-size: 14px; color: #555; display: flex; align-items: center; gap: 6px; }
+  .check input { width: 18px; height: 18px; accent-color: #27ae60; }
+
+  #info {
+    font-size: 18px; line-height: 1.9; color: #2c3e50;
+    text-align: center; padding: 6px 10px;
+  }
+  #info .formula { color: #c0392b; font-weight: bold; font-size: 20px; }
+  #info .hint { font-size: 13px; color: #999; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🍕 圆的面积是怎么来的？</h1>
+  <p>把圆剪开、拼一拼，你会发现一个秘密 —— 剪拼前后面积不变！</p>
+</header>
+
+<div class="card">
+  <div id="canvas-box"></div>
+</div>
+
+<div class="card">
+  <div class="controls">
+    <div class="ctrl">
+      <label>半径 r = <span class="val" id="rVal">80</span>（也可以直接拖画布上的黄点）</label>
+      <input type="range" id="rSlider" min="40" max="120" value="80" step="1">
+    </div>
+    <div class="ctrl">
+      <label>扇形数 n = <span class="val" id="nVal">12</span>（越多越像长方形！）</label>
+      <input type="range" id="nSlider" min="6" max="60" value="12" step="2">
+    </div>
+    <button id="cutBtn">✂️ 剪开重拼</button>
+    <label class="check"><input type="checkbox" id="gridChk">显示方格纸（先数格子估一估）</label>
+  </div>
+</div>
+
+<div class="card">
+  <div id="info"></div>
+</div>
+
+<script>
+// ================= 核心状态 =================
+let r = 80, n = 12;
+let t = 0, targetT = 0;        // 拼合动画进度
+let dragging = false;
+const CX = 230, CY = 230;      // 圆心
+const SX = 430, SY = 240;      // 拼图区域
+
+let rSlider, nSlider, cutBtn, gridChk, rVal, nVal, infoBox;
+
+// ================= p5 主程序 =================
+function setup() {
+  pixelDensity(1);                    // iPad Retina 3x 下限制像素密度，防掉帧
+  let c = createCanvas(900, 560);     // 固定逻辑画布尺寸，CSS 等比缩放显示
+  c.parent('canvas-box');
+
+  rSlider = document.getElementById('rSlider');
+  nSlider = document.getElementById('nSlider');
+  cutBtn  = document.getElementById('cutBtn');
+  gridChk = document.getElementById('gridChk');
+  rVal  = document.getElementById('rVal');
+  nVal  = document.getElementById('nVal');
+  infoBox = document.getElementById('info');
+
+  rSlider.addEventListener('input', () => { r = +rSlider.value; rVal.textContent = r; });
+  nSlider.addEventListener('input', () => { n = +nSlider.value; nVal.textContent = n; });
+  cutBtn.addEventListener('click', toggle);
+  gridChk.addEventListener('change', () => {});
+
+  // Pointer Events 统一鼠标 + iPad 触控 + 触控笔（仓库规范第 10 节）。
+  // 事件只绑在画布上，控件（滑块/按钮/复选框）完全走原生触控，互不干扰。
+  const cnv = c.elt;
+  cnv.addEventListener('pointerdown', onPointerDown);
+  cnv.addEventListener('pointermove', onPointerMove);
+  cnv.addEventListener('pointerup', onPointerUp);
+  cnv.addEventListener('pointercancel', onPointerCancel);
+}
+
+function toggle() {
+  targetT = 1 - targetT;
+  cutBtn.textContent = targetT === 1 ? '🔄 还原成圆' : '✂️ 剪开重拼';
+}
+
+function draw() {
+  background(250, 248, 242);
+  t += (targetT - t) * 0.06;
+  if (abs(targetT - t) < 0.002) t = targetT;
+
+  if (gridChk.checked) drawGrid();
+  drawSectors();
+  drawAnnotations();
+  updateInfo();
+}
+
+// ---------- 核心：扇形剪拼动画 ----------
+function drawSectors() {
+  let s = TWO_PI * r / n;      // 每个扇形的弧长
+  let Ytop = SY - r / 2, Ybot = SY + r / 2;
+  let e = ease(t);
+  let gap = 0.015 * min(1, t * 8) * min(1, (1 - t) * 8); // 剪缝
+
+  for (let i = 0; i < n; i++) {
+    let a1 = i * TWO_PI / n;
+    let a2 = (i + 1) * TWO_PI / n;
+
+    // 拼好后的目标位置：红蓝交错，一上一下
+    let k = floor(i / 2), tx, ty, midDir;
+    if (i % 2 === 0) { tx = SX + k * s + s / 2; ty = Ybot; midDir = -HALF_PI; }
+    else             { tx = SX + (k + 1) * s;   ty = Ytop; midDir =  HALF_PI; }
+
+    let rot = normAngle(midDir - (a1 + PI / n)) * e;
+    let tipX = lerp(CX, tx, e);   // 尖点从圆心飞向目标
+    let tipY = lerp(CY, ty, e);
+
+    if (i % 2 === 0) { fill(255, 120, 80); stroke(214, 84, 48); }
+    else             { fill(90, 150, 255); stroke(48, 100, 200); }
+    strokeWeight(1);
+
+    drawSector(tipX, tipY, a1 + rot + gap, a2 + rot - gap);
+  }
+}
+
+function drawSector(x, y, a1, a2) {  // 以 为尖点画扇形
+  beginShape();
+  vertex(x, y);
+  let steps = max(4, floor((a2 - a1) * 30));
+  for (let j = 0; j <= steps; j++) {
+    let a = lerp(a1, a2, j / steps);
+    vertex(x + r * cos(a), y + r * sin(a));
+  }
+  endShape(CLOSE);
+}
+
+// ---------- 画布标注 ----------
+function drawAnnotations() {
+  let Ytop = SY - r / 2, Ybot = SY + r / 2;
+
+  if (t < 0.5) {          // 圆状态：半径线 + 拖拽手柄
+    stroke(80); strokeWeight(2);
+    let ra = -0.5;
+    line(CX, CY, CX + r * cos(ra), CY + r * sin(ra));
+    noStroke(); fill(80); textSize(16);
+    text('r = ' + r, CX + r * cos(ra) * 0.55 + 8, CY + r * sin(ra) * 0.55);
+
+    fill(255, 200, 0); stroke(200, 150, 0); strokeWeight(2);
+    circle(CX + r, CY, 16);
+    noStroke(); fill(150); textSize(14);
+    text('← 拖动黄点改变半径', CX + r - 190, CY - 12);
+  }
+
+  if (t > 0.65) {         // 拼合状态：虚线长方形 + 宽高标注
+    let alpha = map(t, 0.65, 1, 0, 255);
+    stroke(60, alpha); strokeWeight(2);
+    drawingContext.setLineDash([6, 5]);
+    noFill();
+    rect(SX, Ytop, PI * r, r);
+    drawingContext.setLineDash([]);
+
+    noStroke(); fill(60, alpha); textSize(16);
+    let cxm = SX + PI * r / 2;
+    line(cxm, Ytop - 26, cxm, Ytop - 8);
+    text('宽 = 圆周长的一半 = πr ≈ ' + nf(PI * r, 0, 1), cxm - 110, Ytop - 34);
+    text('高 = r = ' + r, SX + PI * r + 12, SY + 5);
+  }
+}
+
+// ---------- 方格纸 ----------
+function drawGrid() {
+  stroke(210); strokeWeight(1);
+  for (let x = 0; x <= width; x += 20) line(x, 0, x, height);
+  for (let y = 0; y <= height; y += 20) line(0, y, width, y);
+  noStroke(); fill(170); textSize(12);
+  text('每小格 = 20 × 20', 20, 24);
+}
+
+// ---------- 信息面板（HTML，实时刷新） ----------
+function updateInfo() {
+  let area = PI * r * r;
+  let html;
+  if (t > 0.65) {
+    html =
+      `拼成的图形：宽 πr ≈ <b>${nf(PI * r, 0, 1)}</b> × 高 r = <b>${r}</b> ≈ ${nf(area, 0, 1)}<br>` +
+      `<span class="formula">圆的面积 S = πr × r = πr² ≈ ${nf(area, 0, 1)}</span><br>` +
+      `<span class="hint">剪拼只改变形状，面积一点都没变！试试把 n 调到 60，看看会发生什么？</span>`;
+  } else {
+    html =
+      `圆的面积 S = πr² = 3.14 × ${r} × ${r} ≈ <b>${nf(area, 0, 1)}</b><br>` +
+      `<span class="hint">猜一猜：点「✂️ 剪开重拼」后，圆会变成什么形状？面积会变吗？</span>`;
+  }
+  infoBox.innerHTML = html;
+}
+
+// ---------- 拖拽半径：Pointer Events（统一鼠标 + iPad 触控 + 触控笔） ----------
+let activePointerId = null;           // 单指锁定，避免多指干扰
+
+// 画布坐标换算：CSS 显示尺寸 → 画布逻辑像素（pixelDensity(1)，不除 devicePixelRatio）
+function canvasPoint(e) {
+  const el = e.target;
+  const rect = el.getBoundingClientRect();
+  return {
+    x: (e.clientX - rect.left) * (el.width / rect.width),
+    y: (e.clientY - rect.top) * (el.height / rect.height),
+  };
+}
+
+function onPointerDown(e) {
+  if (activePointerId !== null) return;          // 已有手指在拖，忽略多余指针
+  activePointerId = e.pointerId;
+  e.preventDefault();
+  try { e.target.setPointerCapture(e.pointerId); } catch (_) {}   // 移出画布仍能收到 move/up
+  const p = canvasPoint(e);
+  if (t < 0.5 && dist(p.x, p.y, CX + r, CY) < 20) dragging = true;
+}
+function onPointerMove(e) {
+  if (e.pointerId !== activePointerId) return;
+  if (dragging) {
+    const p = canvasPoint(e);
+    r = constrain(dist(p.x, p.y, CX, CY), 40, 120);
+    rSlider.value = r; rVal.textContent = r;
+  }
+}
+function onPointerUp(e) {
+  if (e.pointerId !== activePointerId) return;
+  activePointerId = null;
+  dragging = false;
+}
+function onPointerCancel(e) {
+  if (e.pointerId !== activePointerId) return;
+  activePointerId = null;
+  dragging = false;
+}
+
+// ---------- 工具函数（注意：不能用 p5 保留名 smooth！） ----------
+function normAngle(a) {
+  return ((a + PI) % TWO_PI + TWO_PI) % TWO_PI - PI;
+}
+function ease(x) { return x * x * (3 - 2 * x); }
+</script>
+</body>
+</html>

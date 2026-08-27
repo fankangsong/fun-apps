@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>投篮 · 最小实现</title>
+<!-- iPad Safari 适配：禁止双指缩放/下拉回弹/长按选择，启用 viewport-fit=cover 全屏铺满 -->
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.11.3/p5.min.js"></script>
+<script>p5.disableFriendlyErrors = true;</script>
+<style>
+  html, body {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: #12161c;
+    /* 防止 iOS 长按选择/高亮 */
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+    /* 禁用 Safari 默认的触摸手势（滚动/缩放/回弹） */
+    touch-action: none;
+    overscroll-behavior: none;
+  }
+  canvas { display: block; touch-action: none; }
+</style>
+</head>
+<body>
+<script>
+// =====================================================================
+// 物理 / 手感参数（全部可调）
+// =====================================================================
+const CONFIG = {
+  // --- 重力与运动 ---
+  gravity: 0.55,          // 每帧向下加速度 (px/frame^2)
+  airDrag: 0.999,         // 空气阻力，每帧速度乘以此值 (1 = 无阻力)
+  timeScale: 1.0,         // 全局时间缩放，调慢看轨迹用
+
+  // --- 投掷力度 ---
+  powerScale: 0.22,       // 拖拽距离 -> 初速度 的转换系数
+  maxDragDist: 320,       // 拖拽距离上限（超过按上限算）
+  minDragDist: 12,        // 小于此距离视为无效投掷
+
+  // --- 篮球 ---
+  ballRadius: 16,
+  ballStartX: 160,
+  ballStartYOffset: 140,  // 距离画布底部的高度
+
+  // --- 篮筐 ---
+  hoopXRatio: 0.82,       // 篮筐圈中心 X 占画布宽度的比例（靠右）
+  hoopYOffset: 300,       // 篮筐距离画布底部高度
+  hoopRadius: 44,         // 篮圈半径（水平半宽）
+  rimThickness: 5,
+  backboardH: 150,
+  backboardOffset: 26,    // 篮板内表面相对篮圈后缘的偏移（篮圈紧贴篮板伸出）
+  rimArm: 22,             // 篮圈从篮板伸出的水平臂长（前缘到篮板）
+  poleGap: 64,            // 立柱中心相对篮板内表面的水平间距（立柱在篮板后方）
+  netH: 70,               // 网兜自然下垂高度
+  netSeg: 7,              // 网兜竖直段数（环数）
+  netCols: 9,             // 网兜圆周方向网格数
+  netStiff: 0.18,         // 网兜弹簧刚度
+  netDamp: 0.86,          // 网兜阻尼
+  netSwing: 0.25,         // 网兜受风/随机微扰强度
+
+  // --- 碰撞 ---
+  restitution: 0.55,      // 撞篮板/篮筐的弹性系数
+  friction: 0.85,         // 碰撞后切向速度保留
+  groundBounce: 0.45,
+  groundFriction: 0.8,
+
+  // --- 轨迹 ---
+  trailMaxLen: 90,        // 轨迹点数量上限
+  trailFadeIn: 10,        // 渐入帧数（头部若干点由细到粗）
+  trailLife: 55,          // 每个轨迹点的存活帧数（渐出）
+  trailWeightMax: 5,      // 轨迹最大线宽
+
+  // --- 预测虚线 ---
+  aimPreviewSteps: 46,
+  aimPreviewGap: 3,
+
+  // --- 判定 ---
+  scoreVyMin: 0.5,        // 判定进球时要求向下速度 > 此值
+
+  // --- 分线（距篮筐水平距离，px）---
+  lineThree: 360,         // 超过此距离投中 = 3 分
+  lineTwo: 200,           // 超过此距离投中 = 2 分
+  lineOne: 80,            // 超过此距离投中 = 1 分（更近亦 1 分）
+
+  // --- 彩带庆祝 ---
+  confettiCount: 140,
+  confettiLife: 220,
+
+  // --- 再投一次按钮 ---
+  btnW: 150,
+  btnH: 52,
+  btnPad: 24,              // 按钮距右下角的边距
+};
+
+const PALETTE = {
+  bg:        '#141a22',
+  bgGrid:    '#1b2330',
+  ball:      '#e8833a',
+  ballLine:  '#1b1207',
+  rim:       '#ff5252',
+  board:     '#8fa3b8',
+  trail:     '#7fd4ff',
+  aim:       '#5f6f80',
+  ok:        '#4ade80',
+  miss:      '#ef6b6b',
+  swish:     '#ffd54a',
+  text:      '#c8d4e0',
+};
+
+// =====================================================================
+// 状态
+// =====================================================================
+const STATE = { READY: 'ready', FLY: 'fly', WAITING: 'waiting', REPLAY: 'replay' };
+
+let state = STATE.READY;
+let ball;               // {pos, vel}
+let trail = [];         // {x, y, age}
+let dragging = false;       // 弹弓式投篮拖拽
+let repositioning = false;  // 自由拖放篮球
+let dragStart, dragNow;
+
+let hoop;               // 计算好的篮筐几何
+let groundY;
+
+let score = 0, attempts = 0;
+let passedRimTop = false;   // 球已从上方进入篮圈平面
+let resultText = '', resultColor, resultTimer = 0;
+let scoreFlash = 0;
+let scoredOnce = false;     // 本次飞行是否已计过分（避免重复计分）
+let touched = false;         // 本次飞行是否碰到过篮筐或篮板（用于空心球判定）
+let shotStartX = 0;          // 本次投篮起点 X（用于分线判定）
+let confetti = [];           // 彩带粒子
+let celebrate = 0;           // 祝贺画面计时（空心球）
+
+// --- 回放 ---
+let flightPath = [];        // 本次飞行每帧记录的球心坐标
+let replayIdx = 0;          // 回放进度下标
+let replayGhost;            // 回放时的幽灵球（仅用于绘制）
+
+// --- 篮网物理 ---
+let net = null;             // 网兜网格：ring[depth][col] = {x, y, vx, vy}
+
+// --- 活动指针坐标（鼠标/触控统一），替代全局 mouseX/mouseY ---
+let pointerX = 0, pointerY = 0, pointerActive = false;
+
+// =====================================================================
+// Input — Pointer Events 统一输入层（兼容鼠标 + 触屏，iPad Safari 适配）
+//   复刻 template/input.js 的封装：单指针模式 + 坐标换算 + 语义回调
+// =====================================================================
+const Input = (function () {
+  let canvasEl = null;
+  let activePointerId = null;
+  let downPos = null;        // 记录按下坐标，用于轻点(Tap)判定
+
+  const handlers = {
+    onTap:       null,  // (x, y) 轻点
+    onDragStart: null,  // (x, y) 拖拽开始
+    onDrag:      null,  // (x, y) 拖拽中
+    onDragEnd:   null,  // (x, y) 拖拽结束
+  };
+
+  function bind(p5Inst) {
+    canvasEl = p5Inst.canvas;
+    canvasEl.style.touchAction = 'none';   // 双保险：禁止浏览器手势抢占
+
+    canvasEl.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      if (activePointerId !== null) return; // 单指/单指针模式
+      activePointerId = e.pointerId;
+      const { x, y } = toCanvasCoords(e);
+      pointerX = x; pointerY = y; pointerActive = true;
+      downPos = { x, y };
+      if (handlers.onDragStart) handlers.onDragStart(x, y);
+    });
+
+    canvasEl.addEventListener('pointermove', (e) => {
+      const { x, y } = toCanvasCoords(e);
+      pointerX = x; pointerY = y;
+      if (activePointerId === e.pointerId) {
+        if (handlers.onDrag) handlers.onDrag(x, y);
+      }
+    });
+
+    const end = (e) => {
+      if (activePointerId !== e.pointerId) return;
+      const { x, y } = toCanvasCoords(e);
+      pointerX = x; pointerY = y;
+      // 轻点判定：按下到抬起位移很小视为 tap（与拖拽互斥）
+      if (downPos) {
+        const moved = Math.hypot(x - downPos.x, y - downPos.y);
+        if (moved < 8 && handlers.onTap) handlers.onTap(x, y);
+        downPos = null;
+      }
+      if (handlers.onDragEnd) handlers.onDragEnd(x, y);
+      activePointerId = null;
+      pointerActive = false;
+    };
+    canvasEl.addEventListener('pointerup', end);
+    canvasEl.addEventListener('pointercancel', end);
+  }
+
+  // 把事件坐标转换为画布内坐标（考虑画布偏移与 DPR 缩放）
+  function toCanvasCoords(e) {
+    const rect = canvasEl.getBoundingClientRect();
+    const sx = canvasEl.width / rect.width / (window.devicePixelRatio || 1);
+    const sy = canvasEl.height / rect.height / (window.devicePixelRatio || 1);
+    return {
+      x: (e.clientX - rect.left) * sx,
+      y: (e.clientY - rect.top) * sy,
+    };
+  }
+
+  function setHandlers(obj) { Object.assign(handlers, obj); }
+
+  return { bind, setHandlers };
+})();
+
+// =====================================================================
+function setup() {
+  createCanvas(windowWidth, windowHeight);
+  pixelDensity(1);
+  computeLayout();
+  resetBall();
+  // 绑定统一输入层（鼠标 + 触控）
+  Input.bind(this);
+  Input.setHandlers({
+    onDragStart: handleDragStart,
+    onDrag:      handleDrag,
+    onDragEnd:   handleDragEnd,
+    onTap:       handleTap,
+  });
+}
+
+function computeLayout() {
+  groundY = height - 60;
+  // 限制篮筐位置，使立柱（篮板后方 poleGap）不超出屏幕右边界
+  const maxHoopX = width - 20 - CONFIG.poleGap - CONFIG.backboardOffset - CONFIG.hoopRadius;
+  hoop = {
+    x: min(width * CONFIG.hoopXRatio, maxHoopX),
+    y: height - CONFIG.hoopYOffset,
+    r: CONFIG.hoopRadius,
+  };
+  // 篮板内表面在篮圈后缘再往后一点（篮圈紧贴篮板伸出）
+  hoop.boardX = hoop.x + hoop.r + CONFIG.backboardOffset;
+  // 立柱位于篮板后方（重力经立柱传至地面）
+  hoop.poleX = hoop.boardX + CONFIG.poleGap;
+  initNet();
+}
+
+// 初始化网兜网格：一圈圈同心环，深度方向逐环收拢，顶点带速度用于物理晃动
+function initNet() {
+  net = [];
+  const rings = CONFIG.netSeg + 1;
+  for (let d = 0; d < rings; d++) {
+    const t = d / CONFIG.netSeg;            // 0=圈口, 1=网底
+    const rad = lerp(hoop.r, hoop.r * 0.34, t);  // 自然下垂时收拢
+    const y = hoop.y + t * CONFIG.netH;
+    const row = [];
+    for (let c = 0; c < CONFIG.netCols; c++) {
+      const ang = (c / CONFIG.netCols) * TWO_PI;
+      row.push({
+        bx: hoop.x + cos(ang) * rad,   // 静止基准位置
+        by: y,
+        x: hoop.x + cos(ang) * rad,
+        y: y,
+        vx: 0, vy: 0,
+      });
+    }
+    net.push(row);
+  }
+}
+
+function resetBall() {
+  ball = {
+    pos: createVector(CONFIG.ballStartX, height - CONFIG.ballStartYOffset),
+    vel: createVector(0, 0),
+    rot: 0,
+    spin: 0,
+  };
+  trail = [];
+  flightPath = [];
+  state = STATE.READY;
+  passedRimTop = false;
+  scoredOnce = false;
+  touched = false;
+  shotStartX = ball.pos.x;
+  confetti = [];
+  celebrate = 0;
+  attempts = attempts; // 保留统计
+}
+
+// =====================================================================
+function draw() {
+  drawBackground();
+  drawScoreLines();      // 地面分线（在篮架之前绘制，作为场地标识）
+  drawHoop();
+
+  if (state === STATE.FLY || state === STATE.WAITING) {
+    stepPhysics(CONFIG.timeScale);
+  } else if (state === STATE.REPLAY) {
+    stepReplay();
+  }
+
+  updateTrail();
+  drawTrail();
+
+  if (dragging && state === STATE.READY) {
+    drawDragUI();
+  }
+
+  // 回放时：真实球停在最终落点，再叠加幽灵球 + 虚线预测路线
+  drawBall();
+  if (state === STATE.REPLAY) {
+    drawReplayPath();
+    drawGhost();
+  }
+
+  updateConfetti();
+  drawConfetti();        // 彩带（空心球庆祝）
+  drawCelebrate();       // 祝贺画面叠层
+
+  drawHUD();
+
+  if (state === STATE.WAITING) {
+    drawRetryButton();
+  } else if (state === STATE.REPLAY) {
+    drawReplayButton();
+  }
+
+  if (resultTimer > 0) {
+    resultTimer--;
+    drawResult();
+  }
+}
+
+// =====================================================================
+// 物理
+// =====================================================================
+function stepPhysics(dt) {
+  const prev = ball.pos.copy();
+
+  ball.vel.y += CONFIG.gravity * dt;
+  ball.vel.mult(Math.pow(CONFIG.airDrag, dt));
+  ball.pos.x += ball.vel.x * dt;
+  ball.pos.y += ball.vel.y * dt;
+  ball.rot += ball.spin * dt;
+
+  trail.push({ x: ball.pos.x, y: ball.pos.y, age: 0 });
+  if (trail.length > CONFIG.trailMaxLen) trail.shift();
+
+  if (state === STATE.FLY) {
+    flightPath.push({ x: ball.pos.x, y: ball.pos.y });
+  }
+
+  // 先解算碰撞（更新 touched 状态），再判定进球：
+  // 这样“球穿过篮圈平面那一帧”的 touched 已包含本帧是否擦到筐/板，
+  // 避免同帧擦边进球被误判为空心球。
+  collideBackboard();
+  collideRim();
+  checkScore(prev, ball.pos);
+  collideBounds();
+}
+
+// 进球判定：球心从篮圈平面上方穿到下方，且此时水平位置在圈内、速度向下
+function checkScore(prev, now) {
+  if (state !== STATE.FLY) return;
+
+  if (prev.y < hoop.y && now.y >= hoop.y) {
+    const t = (hoop.y - prev.y) / max(0.0001, now.y - prev.y);
+    const crossX = lerp(prev.x, now.x, t);
+    const inside = Math.abs(crossX - hoop.x) < hoop.r - CONFIG.ballRadius * 0.35;
+    if (inside && ball.vel.y > CONFIG.scoreVyMin) {
+      if (!scoredOnce) {
+        scoredOnce = true;
+        attempts++;
+        // 根据投篮起点到篮筐的水平距离判定基础分
+        const dist = hoop.x - shotStartX;
+        let base = 1;
+        if (dist >= CONFIG.lineThree) base = 3;
+        else if (dist >= CONFIG.lineTwo) base = 2;
+        else if (dist >= CONFIG.lineOne) base = 1;
+
+        // 空心球：全程未碰筐/板
+        const swish = !touched;
+        const gained = swish ? base * 2 : base;
+        score += gained;
+        scoreFlash = 30;
+
+        if (swish) {
+          resultText = `空心球 +${gained}`;
+          resultColor = PALETTE.swish;
+          celebrate = 150;          // 祝贺画面计时
+          spawnConfetti();          // 飞入彩带
+        } else {
+          resultText = `SCORE +${gained}`;
+          resultColor = PALETTE.ok;
+        }
+        resultTimer = 70;
+        // 球穿过网兜：给网兜顶点一个向下冲击，触发不规则晃动
+        kickNet(ball.vel.y * 0.6);
+      }
+    }
+  }
+}
+
+// 给网兜施加一次冲击（进球瞬间球向下穿过）
+function kickNet(strength) {
+  if (!net) return;
+  const rings = net.length, cols = net[0].length;
+  for (let d = 1; d < rings; d++) {
+    const f = (d / (rings - 1));           // 越靠网底冲击越大
+    for (let c = 0; c < cols; c++) {
+      net[d][c].vy += strength * f;
+      net[d][c].vx += (Math.random() - 0.5) * strength * f * 0.5;
+    }
+  }
+}
+
+function collideBackboard() {
+  const bx = hoop.boardX;
+  const top = hoop.y - CONFIG.backboardH * 0.72;
+  const bot = hoop.y + CONFIG.backboardH * 0.28;
+  if (ball.pos.y > top && ball.pos.y < bot) {
+    if (ball.pos.x + CONFIG.ballRadius > bx && ball.vel.x > 0) {
+      ball.pos.x = bx - CONFIG.ballRadius;
+      ball.vel.x *= -CONFIG.restitution;
+      ball.vel.y *= CONFIG.friction;
+      ball.spin = ball.vel.x * 0.02;
+    }
+  }
+  touched = true;   // 撞到篮板
+}
+
+function collideRim() {
+  // 篮圈左右两端各视为一个小圆点碰撞体
+  const pts = [
+    createVector(hoop.x - hoop.r, hoop.y),
+    createVector(hoop.x + hoop.r, hoop.y),
+  ];
+  for (const p of pts) {
+    const d = p5.Vector.sub(ball.pos, p);
+    const minD = CONFIG.ballRadius + CONFIG.rimThickness * 0.5;
+    if (d.magSq() < minD * minD && d.magSq() > 0.0001) {
+      const n = d.copy().normalize();
+      ball.pos = p5.Vector.add(p, n.copy().mult(minD));
+      const vn = ball.vel.dot(n);
+      if (vn < 0) {
+        // v' = v - (1+e) * (v·n) n，切向乘摩擦
+        const normalPart = n.copy().mult(vn);
+        const tangent = p5.Vector.sub(ball.vel, normalPart);
+        ball.vel = p5.Vector.add(
+          tangent.mult(CONFIG.friction),
+          normalPart.mult(-CONFIG.restitution)
+        );
+        ball.spin = ball.vel.x * 0.02;
+      }
+    }
+  }
+  touched = true;   // 撞到篮圈
+}
+
+function collideBounds() {
+  const r = CONFIG.ballRadius;
+  if (ball.pos.y + r > groundY) {
+    ball.pos.y = groundY - r;
+    ball.vel.y *= -CONFIG.groundBounce;
+    ball.vel.x *= CONFIG.groundFriction;
+    if (Math.abs(ball.vel.y) < 1.2 && Math.abs(ball.vel.x) < 1.2) {
+      // 球已稳定停在地面：记录一次未进球的尝试，进入等待状态
+      if (!scoredOnce) {
+        scoredOnce = true;
+        attempts++;
+        resultText = 'MISS';
+        resultColor = PALETTE.miss;
+        resultTimer = 70;
+      }
+      state = STATE.WAITING;
+      return;
+    }
+  }
+  if (ball.pos.x - r < 0) { ball.pos.x = r; ball.vel.x *= -CONFIG.restitution; }
+  if (ball.pos.x + r > width) { ball.pos.x = width - r; ball.vel.x *= -CONFIG.restitution; }
+}
+
+// =====================================================================
+// 回放：沿记录的飞行轨迹逐帧推进幽灵球，并用虚线显示完整投篮路线
+// =====================================================================
+function startReplay() {
+  if (flightPath.length < 2) return;
+  replayIdx = 0;
+  replayGhost = {
+    pos: createVector(flightPath[0].x, flightPath[0].y),
+    rot: 0,
+  };
+  state = STATE.REPLAY;
+}
+
+function stepReplay() {
+  replayIdx++;
+  if (replayIdx >= flightPath.length) {
+    // 回放结束：幽灵球停在终点，回到等待状态
+    replayIdx = flightPath.length - 1;
+    state = STATE.WAITING;
+    return;
+  }
+  const p = flightPath[replayIdx];
+  replayGhost.pos.set(p.x, p.y);
+  replayGhost.rot += 0.15;
+}
+
+// 完整投篮路线的虚线预测
+function drawReplayPath() {
+  if (flightPath.length < 2) return;
+  stroke(PALETTE.aim);
+  strokeWeight(2);
+  drawingContext.setLineDash([8, 8]);
+  noFill();
+  beginShape();
+  for (const p of flightPath) vertex(p.x, p.y);
+  endShape();
+  drawingContext.setLineDash([]);
+
+  // 终点标记
+  const end = flightPath[flightPath.length - 1];
+  noStroke();
+  fill(PALETTE.aim);
+  circle(end.x, end.y, 8);
+}
+
+// 半透明幽灵球
+function drawGhost() {
+  push();
+  translate(replayGhost.pos.x, replayGhost.pos.y);
+  rotate(replayGhost.rot);
+  noStroke();
+  const c = color(PALETTE.ball);
+  c.setAlpha(150);
+  fill(c);
+  circle(0, 0, CONFIG.ballRadius * 2);
+  pop();
+}
+
+// =====================================================================
+// 轨迹：渐入（新点由细变粗）+ 渐出（旧点淡出消失）
+// =====================================================================
+function updateTrail() {
+  for (let i = trail.length - 1; i >= 0; i--) {
+    trail[i].age++;
+    if (trail[i].age > CONFIG.trailLife) trail.splice(i, 1);
+  }
+}
+
+function drawTrail() {
+  if (trail.length < 2) return;
+  noFill();
+  const n = trail.length;
+  for (let i = 1; i < n; i++) {
+    const a = trail[i - 1], b = trail[i];
+
+    // 渐出：按存活时间衰减
+    const fadeOut = 1 - b.age / CONFIG.trailLife;
+    // 渐入：最新的若干点从细到粗
+    const headIdx = n - 1 - i;
+    const fadeIn = constrain(1 - headIdx / CONFIG.trailFadeIn, 0, 1);
+    // 沿轨迹从尾到头的整体权重
+    const along = i / n;
+
+    const k = fadeOut * fadeOut * (0.35 + 0.65 * along);
+    const w = CONFIG.trailWeightMax * k * lerp(0.35, 1, fadeIn);
+    if (w < 0.05) continue;
+
+    const c = color(PALETTE.trail);
+    c.setAlpha(255 * k * 0.9);
+    stroke(c);
+    strokeWeight(w);
+    line(a.x, a.y, b.x, b.y);
+  }
+
+  // 头部高光点
+  const h = trail[trail.length - 1];
+  const hc = color(PALETTE.trail);
+  hc.setAlpha(90);
+  noStroke(); fill(hc);
+  circle(h.x, h.y, CONFIG.trailWeightMax * 1.6);
+}
+
+// =====================================================================
+// 交互
+// =====================================================================
+function computeLaunch() {
+  // 弹弓式：投篮方向与拖拽方向相反（从当前指针位置指向篮球）
+  let v = createVector(ball.pos.x - pointerX, ball.pos.y - pointerY);
+  let d = v.mag();
+  if (d > CONFIG.maxDragDist) { v.setMag(CONFIG.maxDragDist); d = CONFIG.maxDragDist; }
+  return { vel: v.copy().mult(CONFIG.powerScale), dist: d, dir: v };
+}
+
+// ---- 语义化交互回调（由 Input 统一鼠标/触控驱动）----
+function handleDragStart(x, y) {
+  if (state === STATE.WAITING) return;   // WAITING 下的点击交给 onTap 处理
+  if (state === STATE.REPLAY) return;    // REPLAY 下的点击交给 onTap 处理
+  if (state !== STATE.READY) return;
+
+  // 点中篮球 -> 进入自由拖放模式（重新定位）
+  if (p5.Vector.dist(createVector(x, y), ball.pos) <= CONFIG.ballRadius + 8) {
+    repositioning = true;
+    ball.vel.set(0, 0);
+    ball.spin = 0;
+    trail = [];
+    ball.pos.set(x, y);
+    return;
+  }
+
+  // 否则 -> 弹弓式投篮拖拽
+  dragging = true;
+  dragStart = createVector(x, y);
+  dragNow = dragStart.copy();
+}
+
+function handleDrag(x, y) {
+  if (repositioning) {
+    ball.pos.set(constrain(x, CONFIG.ballRadius, width - CONFIG.ballRadius),
+                 constrain(y, CONFIG.ballRadius, groundY - CONFIG.ballRadius));
+  } else if (dragging) {
+    dragNow.set(x, y);
+  }
+}
+
+function handleDragEnd(x, y) {
+  if (repositioning) {
+    repositioning = false;
+    return;
+  }
+  if (!dragging) return;
+  dragging = false;
+  pointerX = x; pointerY = y;
+  const L = computeLaunch();
+  if (L.dist < CONFIG.minDragDist) return;
+  ball.vel = L.vel;
+  ball.spin = -L.vel.x * 0.02;
+  trail = [];
+  shotStartX = ball.pos.x;   // 记录投篮起点用于分线判定
+  touched = false;           // 重置碰撞标记
+  state = STATE.FLY;
+}
+
+function handleTap(x, y) {
+  // WAITING 状态：判断回放 / 再投按钮
+  if (state === STATE.WAITING) {
+    if (pointInReplayButton(x, y)) {
+      startReplay();
+    } else if (pointInRetryButton(x, y)) {
+      resetBall();
+      resultTimer = 0;
+    }
+    return;
+  }
+
+  // REPLAY 状态：点击任意处结束回放
+  if (state === STATE.REPLAY) {
+    state = STATE.WAITING;
+    return;
+  }
+}
+
+function keyPressed() {
+  if (key === 'r' || key === 'R') { resultTimer = 0; resetBall(); }
+  if (key === ' ') { CONFIG.timeScale = CONFIG.timeScale === 1 ? 0.35 : 1; }
+  if (key === 's' || key === 'S') saveCanvas('shot', 'png');
+  if (key === 'p' || key === 'P') { if (state === STATE.WAITING) startReplay(); }
+  if (key === 'c' || key === 'C') { celebrate = 150; spawnConfetti(); }  // 手动触发祝贺效果
+}
+
+function windowResized() {
+  resizeCanvas(windowWidth, windowHeight);
+  computeLayout();
+  if (state === STATE.READY) resetBall();
+}
+
+// =====================================================================
+// 渲染
+// =====================================================================
+function drawBackground() {
+  background(PALETTE.bg);
+  stroke(PALETTE.bgGrid);
+  strokeWeight(1);
+  for (let x = 0; x < width; x += 60) line(x, 0, x, groundY);
+  for (let y = groundY; y > 0; y -= 60) line(0, y, width, y);
+
+  stroke('#2c3644');
+  strokeWeight(2);
+  line(0, groundY, width, groundY);
+}
+
+function drawHoop() {
+  const top = hoop.y - CONFIG.backboardH * 0.72;
+  const bot = hoop.y + CONFIG.backboardH * 0.28;
+
+  // ---- 工程受力结构（悬臂梁 + 斜拉撑，重力经立柱传至地面）----
+  // 立柱位于篮板后方，主力构件：竖直受压 + 受弯
+  const poleTopY = top - 6;                 // 立柱顶端
+  const braceAnchorY = lerp(poleTopY, groundY, 0.42); // 斜撑在立柱上的下锚点
+  const armFrontX = hoop.boardX + 4;        // 悬臂前端（连到篮板背面）
+
+  // 地面加宽底座（分散压强、抗倾覆）
+  noStroke();
+  fill('#2c3644');
+  const baseW = 70;
+  rect(hoop.poleX - baseW / 2, groundY - 8, baseW, 10, 3);
+
+  // 斜拉撑：立柱中部 -> 悬臂前端，与悬臂、立柱构成三角形抵抗悬臂弯矩
+  stroke('#3a4656');
+  strokeWeight(5);
+  line(hoop.poleX, braceAnchorY, armFrontX, poleTopY);
+
+  // 竖直主立柱
+  strokeWeight(9);
+  line(hoop.poleX, groundY, hoop.poleX, poleTopY);
+
+  // 顶部水平悬臂（把篮板挑出，受重力弯矩，是主要受力梁）
+  strokeWeight(7);
+  line(hoop.poleX, poleTopY, armFrontX, poleTopY);
+
+  // 悬臂到篮板背面的连接段
+  strokeWeight(5);
+  line(armFrontX, poleTopY, hoop.boardX, top + 6);
+  line(armFrontX, poleTopY, hoop.boardX, bot - 6);
+
+  // ---- 篮板 ----
+  // 背板阴影边
+  noStroke();
+  fill(20, 26, 34);
+  rect(hoop.boardX - 6, top - 4, 10, (bot - top) + 8, 2);
+  // 板面
+  stroke(PALETTE.board);
+  strokeWeight(5);
+  line(hoop.boardX, top, hoop.boardX, bot);
+  // 板面内方框（投篮参考框）
+  stroke(PALETTE.rim);
+  strokeWeight(2.5);
+  const boxW = 46, boxH = 34;
+  noFill();
+  rect(hoop.boardX - boxW, hoop.y - boxH * 0.15, boxW, boxH, 2);
+
+  // ---- 篮圈伸出臂（从篮板到圈）----
+  stroke('#c9d3df');
+  strokeWeight(4);
+  line(hoop.boardX, hoop.y, hoop.x + hoop.r, hoop.y);
+
+  // ---- 篮圈（用椭圆近似真实圆环，前缘略低）----
+  push();
+  noFill();
+  stroke(PALETTE.rim);
+  strokeWeight(CONFIG.rimThickness);
+  // 后缘贴板水平，前缘因透视略下垂
+  beginShape();
+  for (let a = 0; a <= TWO_PI + 0.01; a += PI / 12) {
+    const rx = cos(a) * hoop.r;
+    const ry = sin(a) * hoop.r * 0.32;        // 透视压扁
+    const sag = (sin(a) > 0) ? 3 : 0;          // 前缘轻微下垂
+    vertex(hoop.x + rx, hoop.y + ry + sag);
+  }
+  endShape();
+  pop();
+
+  // ---- 网兜 ----
+  updateNet();
+  drawNet();
+}
+
+// 网兜物理：每列顶点视作受弹簧拉向静止基准 + 邻点耦合 + 随机微扰的质点
+function updateNet() {
+  if (!net) return;
+  const rings = net.length, cols = net[0].length;
+
+  for (let d = 0; d < rings; d++) {
+    for (let c = 0; c < cols; c++) {
+      const p = net[d][c];
+      // 顶端环固定在篮圈上
+      if (d === 0) { p.x = p.bx; p.y = p.by; p.vx = 0; p.vy = 0; continue; }
+
+      // 弹簧拉回静止基准
+      let ax = (p.bx - p.x) * CONFIG.netStiff;
+      let ay = (p.by - p.y) * CONFIG.netStiff;
+
+      // 与上一环（更靠圈口）的同列顶点耦合，形成下垂联动
+      const up = net[d - 1][c];
+      ax += (up.x - p.x) * CONFIG.netStiff * 0.5;
+      ay += (up.y - p.y) * CONFIG.netStiff * 0.5;
+
+      // 与左右邻列耦合，传递晃动
+      const left = net[d][(c - 1 + cols) % cols];
+      const right = net[d][(c + 1) % cols];
+      ax += (left.x + right.x - 2 * p.x) * CONFIG.netStiff * 0.35;
+      ay += (left.y + right.y - 2 * p.y) * CONFIG.netStiff * 0.35;
+
+      // 持续随机微扰（风/不规则晃动）+ 基于深度的相位差
+      const ph = frameCount * 0.05 + d * 0.7 + c * 0.9;
+      ax += Math.sin(ph) * CONFIG.netSwing * (0.4 + d * 0.12);
+      ay += Math.cos(ph * 1.3) * CONFIG.netSwing * (0.3 + d * 0.10);
+
+      // 底部环额外受重力方向微扰，晃动更明显
+      if (d === rings - 1) {
+        ax += (Math.random() - 0.5) * CONFIG.netSwing * 1.4;
+        ay += (Math.random() - 0.5) * CONFIG.netSwing * 0.6;
+      }
+
+      p.vx = (p.vx + ax) * CONFIG.netDamp;
+      p.vy = (p.vy + ay) * CONFIG.netDamp;
+      p.x += p.vx;
+      p.y += p.vy;
+    }
+  }
+}
+
+function drawNet() {
+  if (!net) return;
+  const rings = net.length, cols = net[0].length;
+  stroke(200, 210, 222, 150);
+  strokeWeight(1);
+  noFill();
+
+  // 竖直网线（沿深度方向连接相邻环的同列顶点）
+  for (let c = 0; c < cols; c++) {
+    beginShape();
+    for (let d = 0; d < rings; d++) vertex(net[d][c].x, net[d][c].y);
+    endShape();
+  }
+  // 水平环线（连接每环各列顶点）
+  for (let d = 0; d < rings; d++) {
+    beginShape();
+    for (let c = 0; c < cols; c++) vertex(net[d][c].x, net[d][c].y);
+    vertex(net[d][0].x, net[d][0].y); // 闭合
+    endShape();
+  }
+}
+
+function drawBall() {
+  push();
+  translate(ball.pos.x, ball.pos.y);
+
+  // READY 状态下给篮球一个可拖动提示光环
+  if (state === STATE.READY) {
+    const c = color(PALETTE.ball);
+    c.setAlpha(60 + 40 * Math.sin(frameCount * 0.08));
+    noStroke();
+    fill(c);
+    circle(0, 0, CONFIG.ballRadius * 2 + 14);
+  }
+
+  rotate(ball.rot);
+  noStroke();
+  fill(PALETTE.ball);
+  circle(0, 0, CONFIG.ballRadius * 2);
+  stroke(PALETTE.ballLine);
+  strokeWeight(1.5);
+  noFill();
+  line(-CONFIG.ballRadius, 0, CONFIG.ballRadius, 0);
+  arc(0, 0, CONFIG.ballRadius * 1.6, CONFIG.ballRadius * 2, -HALF_PI, HALF_PI);
+  arc(0, 0, CONFIG.ballRadius * 1.6, CONFIG.ballRadius * 2, HALF_PI, PI + HALF_PI);
+  pop();
+}
+
+function drawDragUI() {
+  const L = computeLaunch();
+  const power = constrain(L.dist / CONFIG.maxDragDist, 0, 1);
+
+  // 拖拽连线
+  stroke(255, 255, 255, 70);
+  strokeWeight(1.5);
+  line(ball.pos.x, ball.pos.y, pointerX, pointerY);
+
+  // 力度 / 角度指示
+  const dir = L.dir.copy().normalize();
+  stroke(lerpColor(color(PALETTE.ok), color(PALETTE.miss), power));
+  strokeWeight(3);
+  const len = 30 + power * 70;
+  line(ball.pos.x, ball.pos.y, ball.pos.x + dir.x * len, ball.pos.y + dir.y * len);
+
+  // 力度条
+  const bx = ball.pos.x - 40, by = ball.pos.y + 44;
+  noStroke();
+  fill(255, 255, 255, 30); rect(bx, by, 80, 6, 3);
+  fill(lerpColor(color(PALETTE.ok), color(PALETTE.miss), power));
+  rect(bx, by, 80 * power, 6, 3);
+
+  const ang = degrees(Math.atan2(-dir.y, dir.x));
+  fill(PALETTE.text);
+  textAlign(CENTER, TOP);
+  textSize(12);
+  text(`力度 ${nf(power * 100, 2, 0)}%   角度 ${nf(ang, 2, 0)}°`, ball.pos.x, by + 12);
+}
+
+function drawHUD() {
+  noStroke();
+  fill(PALETTE.text);
+  textAlign(LEFT, TOP);
+  textSize(14);
+  text(`命中 ${score} / ${attempts}`, 20, 20);
+  textSize(11);
+  fill(140, 155, 172);
+  text('拖动篮球可自由摆放位置（位置越远分越高）  ·  空白处反向拖拽后释放投篮（拖拽方向与球飞出方向相反，如弹弓）  ·  手指/鼠标操作相同，支持 iPad 触控  ·  空心球得分翻倍  ·  R 重置  ·  空格 慢放  ·  S 截图  ·  P 回放上一投', 20, 42);
+
+  // READY 状态：显示当前球位置对应的分值预览
+  if (state === STATE.READY) {
+    const dist = hoop.x - ball.pos.x;
+    let base = 1;
+    if (dist >= CONFIG.lineThree) base = 3;
+    else if (dist >= CONFIG.lineTwo) base = 2;
+    else if (dist >= CONFIG.lineOne) base = 1;
+    fill(PALETTE.text);
+    textSize(12);
+    text(`当前位置投中 = ${base} 分（空心再翻倍）`, 20, 60);
+  }
+
+  if (scoreFlash > 0) {
+    scoreFlash--;
+    noFill();
+    const c = color(PALETTE.ok);
+    c.setAlpha(map(scoreFlash, 0, 30, 0, 180));
+    stroke(c);
+    strokeWeight(3);
+    circle(hoop.x, hoop.y + 20, map(scoreFlash, 30, 0, 20, 180));
+  }
+}
+
+function drawResult() {
+  const a = map(resultTimer, 0, 70, 0, 255);
+  const c = color(resultColor);
+  c.setAlpha(a);
+  noStroke();
+  fill(c);
+  textAlign(CENTER, CENTER);
+  textSize(46);
+  text(resultText, width / 2, height * 0.22);
+}
+
+// =====================================================================
+// 地面分线（1/2/3 分区域标记）
+// =====================================================================
+function scoreLineX(threshold) {
+  return constrain(hoop.x - threshold, 40, hoop.x - 20);
+}
+
+function drawScoreLines() {
+  const lines = [
+    { th: CONFIG.lineThree, label: '3 分线', col: '#ff8a5b' },
+    { th: CONFIG.lineTwo,   label: '2 分线', col: '#5fd0ff' },
+    { th: CONFIG.lineOne,   label: '1 分线', col: '#9be08a' },
+  ];
+  textAlign(CENTER, BOTTOM);
+  for (const ln of lines) {
+    const x = scoreLineX(ln.th);
+    // 区域淡色带（向左延伸一段）
+    noStroke();
+    const c = color(ln.col);
+    c.setAlpha(16);
+    fill(c);
+    rect(x - 70, groundY - 4, 70, 4);
+    // 竖直标记线
+    const lc = color(ln.col);
+    lc.setAlpha(180);
+    stroke(lc);
+    strokeWeight(2);
+    line(x, groundY - 4, x, groundY - 26);
+    // 标签
+    noStroke();
+    fill(ln.col);
+    textSize(11);
+    text(ln.label, x, groundY - 28);
+  }
+}
+
+// =====================================================================
+// 彩带庆祝（空心球）
+// =====================================================================
+function spawnConfetti() {
+  confetti = [];
+  const cols = ['#ff5252', '#ffd54a', '#4ade80', '#5fd0ff', '#c98bff', '#ff8a5b'];
+  for (let i = 0; i < CONFIG.confettiCount; i++) {
+    const fromLeft = random() < 0.5;
+    confetti.push({
+      x: fromLeft ? -20 : width + 20,
+      y: random(-40, height * 0.5),
+      vx: (fromLeft ? 1 : -1) * random(3, 8),
+      vy: random(-2, 2),
+      w: random(6, 14),
+      h: random(8, 18),
+      rot: random(TWO_PI),
+      vr: random(-0.3, 0.3),
+      col: random(cols),
+      life: CONFIG.confettiLife + floor(random(40)),
+    });
+  }
+}
+
+function updateConfetti() {
+  if (celebrate <= 0 && confetti.length === 0) return;
+  for (let i = confetti.length - 1; i >= 0; i--) {
+    const p = confetti[i];
+    p.vy += 0.18;            // 重力
+    p.vx *= 0.99;
+    p.x += p.vx;
+    p.y += p.vy;
+    p.rot += p.vr;
+    p.life--;
+    if (p.life <= 0 || p.y > height + 30) confetti.splice(i, 1);
+  }
+  if (celebrate > 0) celebrate--;
+}
+
+function drawConfetti() {
+  for (const p of confetti) {
+    push();
+    translate(p.x, p.y);
+    rotate(p.rot);
+    noStroke();
+    const c = color(p.col);
+    c.setAlpha(constrain(map(p.life, 0, 40, 0, 255), 0, 255));
+    fill(c);
+    rect(-p.w / 2, -p.h / 2, p.w, p.h, 2);
+    pop();
+  }
+}
+
+// 空心球祝贺画面（半透明金色叠层 + 文字）
+function drawCelebrate() {
+  if (celebrate <= 0) return;
+  const a = map(celebrate, 0, 150, 0, 80);
+  noStroke();
+  fill(255, 213, 74, a * 0.4);
+  rect(0, 0, width, height);
+  const ta = map(celebrate, 0, 150, 0, 255);
+  const tc = color(PALETTE.swish);
+  tc.setAlpha(ta);
+  fill(tc);
+  textAlign(CENTER, CENTER);
+  textSize(30);
+  textStyle(BOLD);
+  text('完美空心球！', width / 2, height * 0.32);
+  textStyle(NORMAL);
+}
+
+// --- 右下角按钮 ---
+function retryButtonRect() {
+  const x = width - CONFIG.btnPad - CONFIG.btnW;
+  const y = height - CONFIG.btnPad - CONFIG.btnH;
+  return { x, y, w: CONFIG.btnW, h: CONFIG.btnH };
+}
+
+function replayButtonRect() {
+  const b = retryButtonRect();
+  return { x: b.x - CONFIG.btnW - 14, y: b.y, w: CONFIG.btnW, h: CONFIG.btnH };
+}
+
+function pointInRetryButton(px, py) {
+  const b = retryButtonRect();
+  return px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+}
+
+function pointInReplayButton(px, py) {
+  const b = replayButtonRect();
+  return px >= b.x && px <= b.x + b.w && py >= b.y && py <= b.y + b.h;
+}
+
+function drawRetryButton() {
+  const b = retryButtonRect();
+  const hover = pointerActive && pointInRetryButton(pointerX, pointerY);
+  noStroke();
+  fill(hover ? PALETTE.ok : color(74, 222, 128, 200));
+  rect(b.x, b.y, b.w, b.h, 10);
+  fill(20, 28, 36);
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  textStyle(BOLD);
+  text('再投一次', b.x + b.w / 2, b.y + b.h / 2);
+  textStyle(NORMAL);
+}
+
+function drawReplayButton() {
+  const b = replayButtonRect();
+  const hover = pointerActive && pointInReplayButton(pointerX, pointerY);
+  noStroke();
+  fill(hover ? color(127, 212, 255) : color(95, 111, 128, 220));
+  rect(b.x, b.y, b.w, b.h, 10);
+  fill(20, 28, 36);
+  textAlign(CENTER, CENTER);
+  textSize(18);
+  textStyle(BOLD);
+  text('回放', b.x + b.w / 2, b.y + b.h / 2);
+  textStyle(NORMAL);
+}
+</script>
+</body>
+</html>
