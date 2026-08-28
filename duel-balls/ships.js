@@ -105,8 +105,13 @@ const Ships = (function () {
     spawnTimer--;
     if (spawnTimer <= 0) {
       trySpawn();
-      spawnTimer = S.spawnDelayMin +
-        Math.floor(Math.random() * (S.spawnDelayMax - S.spawnDelayMin + 1));
+      // 未达上限时快速补位（约 1s 一艘，让 maxShips 尽快铺满），
+      // 满员后转入慢速巡补节奏
+      const maxShips = CONFIG.debug.shipMax ?? S.maxShips;
+      spawnTimer = ships.length < maxShips
+        ? S.refillDelay
+        : S.spawnDelayMin +
+          Math.floor(Math.random() * (S.spawnDelayMax - S.spawnDelayMin + 1));
     }
 
     for (let i = ships.length - 1; i >= 0; i--) {

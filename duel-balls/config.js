@@ -99,7 +99,9 @@ const CONFIG = {
   // --- 太空模式：巡逻飞船参数 ---
   // 设计文档：docs/superpowers/specs/2026-08-28-duel-balls-space-mode-design.md
   space: {
-    laneYRatios: [0.30, 0.42, 0.58, 0.70], // 4 条水平航线（场地高比例）
+    // 6 条水平航线（场地高比例）：线路数决定同屏飞船的实际上限，
+    // 同一线路同时只允许 1 艘；maxShips 超过线路数时按线路数封顶
+    laneYRatios: [0.30, 0.38, 0.46, 0.54, 0.62, 0.70],
     maxShips: 6,              // 场上同时最多飞船数（调试可用 debug.shipMax 覆盖）
     shipHP: 1,                // 每艘可承受的撞击次数（1 = 碰撞一次立即爆炸消失）
     physW: 96, physH: 40,     // 物理矩形（略小于视觉，留宽容度）
