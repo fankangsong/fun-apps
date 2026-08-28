@@ -469,10 +469,20 @@ function bindInput() {
 
 // 难度菜单点击命中检测（按钮布局与 render 中保持一致）
 function handleMenuClick(x, y) {
+  // 模式卡：只切换选中，不开局
+  const modes = modeButtonRects();
+  for (let i = 0; i < modes.length; i++) {
+    const b = modes[i];
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      state.modeIndex = i;
+      return;
+    }
+  }
   const btns = menuButtonRects();
   for (let i = 0; i < btns.length; i++) {
     const b = btns[i];
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      Ships.setEnabled(currentMode().key === 'space');
       applyDifficulty(i);
       resetMatch();
       return;
@@ -486,9 +496,21 @@ function menuButtonRects() {
   const gap = 24;
   const total = CONFIG.difficulties.length * bw + (CONFIG.difficulties.length - 1) * gap;
   const startX = (width - total) / 2;
-  const y = height / 2 + 10;
+  const y = height / 2 + 34;
   return CONFIG.difficulties.map((d, i) => ({
     x: startX + i * (bw + gap), y, w: bw, h: bh, data: d,
+  }));
+}
+
+// 模式按钮布局（与绘制保持一致；点击只切换选中，不开局）
+function modeButtonRects() {
+  const bw = Math.min(220, (width - 72) / 2);
+  const bh = 72;
+  const gap = 20;
+  const startX = (width - (bw * 2 + gap)) / 2;
+  const y = height / 2 - 58;
+  return CONFIG.modes.map((m, i) => ({
+    x: startX + i * (bw + gap), y, w: bw, h: bh, data: m,
   }));
 }
 
@@ -715,7 +737,7 @@ function drawHUD() {
   noStroke();
   fill(PALETTE.inkSoft);
   text(
-    `${currentDifficulty().name} · 先到 ${CONFIG.game.winScore} 分 · 回合 ${state.rallyHits} 拍`,
+    `${currentMode().name} · ${currentDifficulty().name} · 先到 ${CONFIG.game.winScore} 分 · 回合 ${state.rallyHits} 拍`,
     cx, 16
   );
 
@@ -900,6 +922,72 @@ function drawMenu() {
   fill(PALETTE.sun);
   text(sub, 0, 3);
   pop();
+
+  // 模式选择（Memphis 贴纸卡，与难度卡同风格）
+  const modes = modeButtonRects();
+  const modeCols = [PALETTE.blue, PALETTE.sun];
+  for (let i = 0; i < modes.length; i++) {
+    const b = modes[i];
+    const isCur = i === state.modeIndex;
+    const col = modeCols[i % modeCols.length];
+
+    // 硬阴影（贴纸凸起）
+    noStroke();
+    fill(PALETTE.ink);
+    rect(b.x + 5, b.y + 5, b.w, b.h, 12);
+
+    // 卡片主体：白底 + 彩描边
+    fill(PALETTE.card);
+    stroke(isCur ? col : PALETTE.ink);
+    strokeWeight(isCur ? 4 : 3);
+    rect(b.x, b.y, b.w, b.h, 12);
+
+    // 小图标（左上角）
+    noStroke();
+    if (b.data.key === 'classic') {
+      // 两块对峙的板子
+      fill(PALETTE.teal);
+      rect(b.x + 14, b.y + 13, 5, 13, 2);
+      fill(PALETTE.coral);
+      rect(b.x + 23, b.y + 13, 5, 13, 2);
+    } else {
+      // 像素小飞船
+      fill(PALETTE.ink);
+      rect(b.x + 13, b.y + 13, 18, 11, 2);
+      fill(PALETTE.blue);
+      rect(b.x + 15, b.y + 15, 12, 7, 1);
+      fill(PALETTE.sun);
+      rect(b.x + 17, b.y + 17, 3, 3);
+    }
+
+    // 名称 + 描述
+    noStroke();
+    fill(PALETTE.ink);
+    textSize(20);
+    text(b.data.name, b.x + b.w / 2, b.y + b.h / 2 - 10);
+    fill(PALETTE.inkSoft);
+    textSize(10.5);
+    text(b.data.desc, b.x + b.w / 2, b.y + b.h / 2 + 14);
+
+    // 当前选中标记：右上角黑底胶囊徽章
+    if (isCur) {
+      push();
+      translate(b.x + b.w - 8, b.y + 8);
+      const tag = '当前';
+      textStyle(BOLD);
+      textSize(11);
+      const tw = textWidth(tag) + 18;
+      rectMode(CORNER);
+      noStroke();
+      fill(PALETTE.ink);
+      rect(-tw, -2, tw, 16, 5);
+      fill(col);
+      textAlign(RIGHT, CENTER);
+      text(tag, -6, 6);
+      textStyle(NORMAL);
+      pop();
+    }
+  }
 
   // 难度按钮（Memphis 贴纸卡片）
   const btns = menuButtonRects();
