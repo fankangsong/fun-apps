@@ -24,6 +24,9 @@ const state = {
   // 难度（CONFIG.difficulties 的索引）
   difficultyIndex: CONFIG.defaultDifficulty,
 
+  // 模式（CONFIG.modes 的索引）
+  modeIndex: CONFIG.defaultMode,
+
   // 比分
   scoreP1: 0,
   scoreP2: 0,
@@ -62,4 +65,9 @@ function setState(phase) {
 // 当前难度配置
 function currentDifficulty() {
   return CONFIG.difficulties[state.difficultyIndex];
+}
+
+// 当前模式
+function currentMode() {
+  return CONFIG.modes[state.modeIndex];
 }
