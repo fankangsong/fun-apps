@@ -8,11 +8,13 @@
   - 禁止引入 npm、Webpack、Vite、esbuild 等构建工具或 `node_modules`
   - 禁止使用 TypeScript、JSX、Sass、PostCSS 等需要编译的语言
   - 禁止使用 Vue / React 等框架
-- **第三方库只能通过 CDN `<script>` 标签引入**，且必须固定版本号（如 `p5.js/1.11.3`），优先使用 BootCDN 等国内可达 CDN：
-  - 渲染：p5.js（引入后设置 `p5.disableFriendlyErrors = true;`）
-  - 物理：Matter.js
+- **第三方库优先通过本地 `<script>` 标签引入**：统一存放在仓库根 `assets/` 目录（如 `assets/p5.min.js`），应用内以相对路径引用（如 `../assets/p5.min.js`），保证双击 HTML 即可完全离线运行：
+  - 渲染：p5.js（引入后设置 `p5.disableFriendlyErrors = true;`）→ 本地 `assets/p5.min.js`
+  - 物理：Matter.js → 本地 `assets/matter.min.js`
+  - 引入新库时：下载**固定版本**的压缩版（如 `p5.js/1.11.3`）提交到 `assets/`，不得改动其文件内容
+  - 仅当库无法本地化时才允许 CDN `<script>` 兜底，且同样必须固定版本号，优先使用 BootCDN 等国内可达 CDN
 - JS 语法保持浏览器可直接运行：不使用 import/export 模块，多文件时按依赖顺序用多个 `<script>` 标签加载（惯例：`config → state → physics → input → render → main`）。
-- 应用必须**双击 HTML 文件即可离线运行**（CDN 除外），无需本地服务器。
+- 应用必须**双击 HTML 文件即可完全离线运行**（第三方库一律走本地 `assets/`，不依赖网络），无需本地服务器。
 
 ## 设备兼容（强制，基准：iPad Safari）
 
