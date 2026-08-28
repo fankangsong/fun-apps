@@ -100,7 +100,7 @@ const CONFIG = {
   // 设计文档：docs/superpowers/specs/2026-08-28-duel-balls-space-mode-design.md
   space: {
     laneYRatios: [0.30, 0.42, 0.58, 0.70], // 4 条水平航线（场地高比例）
-    maxShips: 2,              // 场上同时最多飞船数（调试可用 debug.shipMax 覆盖）
+    maxShips: 6,              // 场上同时最多飞船数（调试可用 debug.shipMax 覆盖）
     shipHP: 1,                // 每艘可承受的撞击次数（1 = 碰撞一次立即爆炸消失）
     physW: 96, physH: 40,     // 物理矩形（略小于视觉，留宽容度）
     visualScale: 8,           // 像素画每像素边长（13×6 → 104×48，较初版放大 2 倍）
