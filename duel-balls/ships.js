@@ -66,7 +66,8 @@ const Ships = (function () {
   // --- 生成：空闲线路随机挑一条，随机方向，从场外滑入 ---
   function trySpawn() {
     const S = CONFIG.space;
-    if (ships.length >= S.maxShips) return;
+    const maxShips = CONFIG.debug.shipMax ?? S.maxShips;
+    if (ships.length >= maxShips) return;
 
     const free = [];
     for (let i = 0; i < laneOccupied.length; i++) {

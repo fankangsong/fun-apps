@@ -37,6 +37,7 @@ const CONFIG = {
   debug: {
     showBodies: false,
     showFPS: false,
+    shipMax: null,           // 太空模式调试：场上飞船数量上限（null = 用 space.maxShips）
   },
 
   // --- 难度分级：板长 / 球速 / 每次回击加速 ---
@@ -99,10 +100,10 @@ const CONFIG = {
   // 设计文档：docs/superpowers/specs/2026-08-28-duel-balls-space-mode-design.md
   space: {
     laneYRatios: [0.30, 0.42, 0.58, 0.70], // 4 条水平航线（场地高比例）
-    maxShips: 2,              // 场上同时最多飞船数
-    shipHP: 3,                // 每艘可承受的撞击次数（舷窗数）
-    physW: 48, physH: 20,     // 物理矩形（略小于视觉，留宽容度）
-    visualScale: 4,           // 像素画每像素边长（13×6 → 52×24）
+    maxShips: 2,              // 场上同时最多飞船数（调试可用 debug.shipMax 覆盖）
+    shipHP: 1,                // 每艘可承受的撞击次数（1 = 碰撞一次立即爆炸消失）
+    physW: 96, physH: 40,     // 物理矩形（略小于视觉，留宽容度）
+    visualScale: 8,           // 像素画每像素边长（13×6 → 104×48，较初版放大 2 倍）
     spawnDelayMin: 150,       // 生成间隔下限（帧）
     spawnDelayMax: 240,       // 生成间隔上限（帧）
     initialDelay: 75,         // 回合开始到首艘飞船的延迟（帧）
