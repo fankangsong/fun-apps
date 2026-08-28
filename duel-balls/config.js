@@ -37,6 +37,7 @@ const CONFIG = {
   debug: {
     showBodies: false,
     showFPS: false,
+    shipMax: null,           // 太空模式调试：场上飞船数量上限（null = 用 space.maxShips）
   },
 
   // --- 难度分级：板长 / 球速 / 每次回击加速 ---
@@ -50,6 +51,7 @@ const CONFIG = {
       ballSpeed: 7.5,
       speedUpPerHit: 0.12,   // 每次成功回击球速递增
       maxSpeed: 15,
+      shipSpeed: 2.6,        // 太空模式：飞船横移速度
     },
     {
       key: 'normal',
@@ -59,6 +61,7 @@ const CONFIG = {
       ballSpeed: 9.5,
       speedUpPerHit: 0.22,
       maxSpeed: 19,
+      shipSpeed: 3.4,        // 太空模式：飞船横移速度
     },
     {
       key: 'hard',
@@ -68,9 +71,17 @@ const CONFIG = {
       ballSpeed: 12,
       speedUpPerHit: 0.35,
       maxSpeed: 24,
+      shipSpeed: 4.3,        // 太空模式：飞船横移速度
     },
   ],
   defaultDifficulty: 1,      // 索引，对应 normal
+
+  // --- 模式：普通 / 太空（太空模式有巡逻飞船改变球路）---
+  modes: [
+    { key: 'classic', name: '普通模式', desc: '经典对撞 · 无干扰' },
+    { key: 'space',   name: '太空模式', desc: '巡逻飞船 · 改变球路' },
+  ],
+  defaultMode: 0,            // 索引，默认普通模式
 
   // --- 游戏数值 ---
   game: {
@@ -83,6 +94,24 @@ const CONFIG = {
     serveDelay: 45,          // 得分后到下一次发球的帧数
     winScore: 5,             // 先达此分数获胜
     wallThickness: 60,       // 左右墙厚度（防止高速穿透）
+  },
+
+  // --- 太空模式：巡逻飞船参数 ---
+  // 设计文档：docs/superpowers/specs/2026-08-28-duel-balls-space-mode-design.md
+  space: {
+    laneYRatios: [0.30, 0.42, 0.58, 0.70], // 4 条水平航线（场地高比例）
+    maxShips: 6,              // 场上同时最多飞船数（调试可用 debug.shipMax 覆盖）
+    shipHP: 1,                // 每艘可承受的撞击次数（1 = 碰撞一次立即爆炸消失）
+    physW: 96, physH: 40,     // 物理矩形（略小于视觉，留宽容度）
+    visualScale: 8,           // 像素画每像素边长（13×6 → 104×48，较初版放大 2 倍）
+    spawnDelayMin: 150,       // 生成间隔下限（帧）
+    spawnDelayMax: 240,       // 生成间隔上限（帧）
+    initialDelay: 75,         // 回合开始到首艘飞船的延迟（帧）
+    refillDelay: 60,          // 飞船被摧毁后的补位延迟（帧）
+    momentumTransfer: 1.0,    // 飞船横移动量叠加到球 vx 的系数
+    despawnMargin: 60,        // 出入场缓冲距离（px）
+    hitFlashFrames: 6,        // 受击闪白帧数
+    flameFlipFrames: 8,       // 推进器火焰换帧间隔（帧）
   },
 };
 

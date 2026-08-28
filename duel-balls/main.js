@@ -50,6 +50,7 @@ function setup() {
   p5Ref = this;
   Render.init(this);
   Input.bind(this);
+  Ships.init(this);
   Physics.init();
 
   computeLayout();
@@ -80,6 +81,7 @@ function draw() {
 
     case GAME_STATE.RALLY:
       updatePaddles();
+      Ships.update();          // 先移动飞船，再推进物理（碰撞用最新位置）
       Physics.step(dt);
       updateGame();
       renderGame();
@@ -138,6 +140,8 @@ function setupGame() {
 }
 
 function rebuildBodies() {
+  // 先清飞船（此时 Physics.remove 仍指向旧世界）
+  Ships.reset();
   // 尺寸变化时重建（先清空世界再建，避免残留刚体）
   Physics.clear();
   Physics.init();
@@ -206,6 +210,7 @@ function registerCollisions() {
   Physics.onPair('ball', 'paddle1', () => onPaddleHit(1));
   Physics.onPair('ball', 'paddle2', () => onPaddleHit(2));
   Physics.onPair('ball', 'wall', () => { state.flash.wall = 8; });
+  Physics.onPair('ball', 'ship', onShipHit);
 }
 
 // 击中板子：按「击球点偏移 + 板子横移速度」重算出射方向
@@ -259,6 +264,49 @@ function onPaddleHit(playerId) {
   state.flash['p' + playerId] = 10;
 }
 
+// 击中飞船：镜面反弹 + 飞船动量叠加（设计文档 §5）
+function onShipHit(bodyA, bodyB, pair) {
+  const shipBody = bodyA.label === 'ship' ? bodyA : bodyB;
+  const G = CONFIG.game;
+  const S = CONFIG.space;
+
+  // 1) Matter 已完成镜面反射（restitution=1），在其结果上叠加飞船横移动量
+  let vx = ball.velocity.x + Ships.getVx(shipBody) * S.momentumTransfer;
+  let vy = ball.velocity.y;
+
+  // 2) 速度归一：撞击不改变回合节奏
+  const speed = state.ballSpeed;
+  const mag = Math.hypot(vx, vy) || 1;
+  vx = (vx / mag) * speed;
+  vy = (vy / mag) * speed;
+
+  // 3) 竖直分量下限：防水平死球（与 onPaddleHit 同款保障）
+  const minVy = speed * G.minVerticalRatio;
+  if (Math.abs(vy) < minVy) {
+    const sign = vy === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(vy);
+    vy = minVy * sign;
+    const remain = Math.sqrt(Math.max(0, speed * speed - vy * vy));
+    vx = Math.sign(vx || 1) * remain;
+  }
+  Matter.Body.setVelocity(ball, { x: vx, y: vy });
+
+  // 4) 沿碰撞法线弹出（方向校正为指向球），防同帧重复触发/粘滞
+  let nx = pair.collision.normal.x;
+  let ny = pair.collision.normal.y;
+  const toBallX = ball.position.x - shipBody.position.x;
+  const toBallY = ball.position.y - shipBody.position.y;
+  if (nx * toBallX + ny * toBallY < 0) { nx = -nx; ny = -ny; }
+  const support = (S.physW / 2) * Math.abs(nx) + (S.physH / 2) * Math.abs(ny);
+  const dist = support + G.ballRadius + 2;
+  Matter.Body.setPosition(ball, {
+    x: shipBody.position.x + nx * dist,
+    y: shipBody.position.y + ny * dist,
+  });
+
+  // 5) 掉血 / 爆炸
+  Ships.hit(shipBody);
+}
+
 // =====================================================================
 // updatePaddles — 板子跟手移动（每帧）
 // =====================================================================
@@ -310,6 +358,19 @@ function updateGame() {
     return;
   }
 
+  // 飞船挤压兜底：球心落入任一飞船外扩矩形（按球半径外扩）时，沿最短轴弹出
+  Ships.forEachRect((x, y, w, h) => {
+    const ex = x - r, ey = y - r, ew = w + r * 2, eh = h + r * 2;
+    const bx = ball.position.x, by = ball.position.y;
+    if (bx <= ex || bx >= ex + ew || by <= ey || by >= ey + eh) return;
+    const dl = bx - ex, dr = ex + ew - bx, dt = by - ey, db = ey + eh - by;
+    const m = Math.min(dl, dr, dt, db);
+    if (m === dl) Matter.Body.setPosition(ball, { x: ex, y: by });
+    else if (m === dr) Matter.Body.setPosition(ball, { x: ex + ew, y: by });
+    else if (m === dt) Matter.Body.setPosition(ball, { x: bx, y: ey });
+    else Matter.Body.setPosition(ball, { x: bx, y: ey + eh });
+  });
+
   // 兜底：极端情况下球被挤出左右墙，拉回场内
   const lx = playLeft() + r;
   const rx = playRight() - r;
@@ -327,6 +388,8 @@ function recordTrail() {
 }
 
 function scorePoint(playerId) {
+  Ships.reset();
+
   if (playerId === PLAYER.P1) state.scoreP1++;
   else state.scoreP2++;
 
@@ -404,6 +467,7 @@ function serveBall() {
 // =====================================================================
 
 function resetMatch() {
+  Ships.reset();
   state.scoreP1 = 0;
   state.scoreP2 = 0;
   state.winner = 0;
@@ -469,10 +533,20 @@ function bindInput() {
 
 // 难度菜单点击命中检测（按钮布局与 render 中保持一致）
 function handleMenuClick(x, y) {
+  // 模式卡：只切换选中，不开局
+  const modes = modeButtonRects();
+  for (let i = 0; i < modes.length; i++) {
+    const b = modes[i];
+    if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      state.modeIndex = i;
+      return;
+    }
+  }
   const btns = menuButtonRects();
   for (let i = 0; i < btns.length; i++) {
     const b = btns[i];
     if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) {
+      Ships.setEnabled(currentMode().key === 'space');
       applyDifficulty(i);
       resetMatch();
       return;
@@ -486,9 +560,21 @@ function menuButtonRects() {
   const gap = 24;
   const total = CONFIG.difficulties.length * bw + (CONFIG.difficulties.length - 1) * gap;
   const startX = (width - total) / 2;
-  const y = height / 2 + 10;
+  const y = height / 2 + 34;
   return CONFIG.difficulties.map((d, i) => ({
     x: startX + i * (bw + gap), y, w: bw, h: bh, data: d,
+  }));
+}
+
+// 模式按钮布局（与绘制保持一致；点击只切换选中，不开局）
+function modeButtonRects() {
+  const bw = Math.min(220, (width - 72) / 2);
+  const bh = 72;
+  const gap = 20;
+  const startX = (width - (bw * 2 + gap)) / 2;
+  const y = height / 2 - 58;
+  return CONFIG.modes.map((m, i) => ({
+    x: startX + i * (bw + gap), y, w: bw, h: bh, data: m,
   }));
 }
 
@@ -515,7 +601,7 @@ function keyReleased() {
 // =====================================================================
 
 function renderGame() {
-  Render.drawBackground();
+  Render.drawBackground(currentMode().key === 'space' && state.phase !== GAME_STATE.MENU);
 
   if (state.phase === GAME_STATE.MENU) {
     drawMenu();
@@ -524,6 +610,7 @@ function renderGame() {
   }
 
   drawArena();
+  Ships.draw();
   drawTrail();
   drawPaddle(paddle1, PLAYER.P1);
   drawPaddle(paddle2, PLAYER.P2);
@@ -715,7 +802,7 @@ function drawHUD() {
   noStroke();
   fill(PALETTE.inkSoft);
   text(
-    `${currentDifficulty().name} · 先到 ${CONFIG.game.winScore} 分 · 回合 ${state.rallyHits} 拍`,
+    `${currentMode().name} · ${currentDifficulty().name} · 先到 ${CONFIG.game.winScore} 分 · 回合 ${state.rallyHits} 拍`,
     cx, 16
   );
 
@@ -870,6 +957,15 @@ function drawMenuShapes() {
 function drawMenu() {
   drawMenuShapes();
 
+  // 选中太空模式时，菜单追加一艘像素飞船贴纸（旋转 -4°）
+  if (currentMode().key === 'space') {
+    push();
+    translate(width * 0.32, height * 0.16);
+    rotate(radians(-4));
+    Ships.drawSprite(0, 0, 5, 'blue', 1, CONFIG.space.shipHP, PALETTE.coral, false);
+    pop();
+  }
+
   push();
   textAlign(CENTER, CENTER);
   noStroke();
@@ -900,6 +996,72 @@ function drawMenu() {
   fill(PALETTE.sun);
   text(sub, 0, 3);
   pop();
+
+  // 模式选择（Memphis 贴纸卡，与难度卡同风格）
+  const modes = modeButtonRects();
+  const modeCols = [PALETTE.blue, PALETTE.sun];
+  for (let i = 0; i < modes.length; i++) {
+    const b = modes[i];
+    const isCur = i === state.modeIndex;
+    const col = modeCols[i % modeCols.length];
+
+    // 硬阴影（贴纸凸起）
+    noStroke();
+    fill(PALETTE.ink);
+    rect(b.x + 5, b.y + 5, b.w, b.h, 12);
+
+    // 卡片主体：白底 + 彩描边
+    fill(PALETTE.card);
+    stroke(isCur ? col : PALETTE.ink);
+    strokeWeight(isCur ? 4 : 3);
+    rect(b.x, b.y, b.w, b.h, 12);
+
+    // 小图标（左上角）
+    noStroke();
+    if (b.data.key === 'classic') {
+      // 两块对峙的板子
+      fill(PALETTE.teal);
+      rect(b.x + 14, b.y + 13, 5, 13, 2);
+      fill(PALETTE.coral);
+      rect(b.x + 23, b.y + 13, 5, 13, 2);
+    } else {
+      // 像素小飞船
+      fill(PALETTE.ink);
+      rect(b.x + 13, b.y + 13, 18, 11, 2);
+      fill(PALETTE.blue);
+      rect(b.x + 15, b.y + 15, 12, 7, 1);
+      fill(PALETTE.sun);
+      rect(b.x + 17, b.y + 17, 3, 3);
+    }
+
+    // 名称 + 描述
+    noStroke();
+    fill(PALETTE.ink);
+    textSize(20);
+    text(b.data.name, b.x + b.w / 2, b.y + b.h / 2 - 10);
+    fill(PALETTE.inkSoft);
+    textSize(10.5);
+    text(b.data.desc, b.x + b.w / 2, b.y + b.h / 2 + 14);
+
+    // 当前选中标记：右上角黑底胶囊徽章
+    if (isCur) {
+      push();
+      translate(b.x + b.w - 8, b.y + 8);
+      const tag = '当前';
+      textStyle(BOLD);
+      textSize(11);
+      const tw = textWidth(tag) + 18;
+      rectMode(CORNER);
+      noStroke();
+      fill(PALETTE.ink);
+      rect(-tw, -2, tw, 16, 5);
+      fill(col);
+      textAlign(RIGHT, CENTER);
+      text(tag, -6, 6);
+      textStyle(NORMAL);
+      pop();
+    }
+  }
 
   // 难度按钮（Memphis 贴纸卡片）
   const btns = menuButtonRects();
