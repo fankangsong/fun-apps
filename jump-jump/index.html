@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>跳一跳 · Memphis 蓄力跳 · FUN APPS</title>
+
+  <script src="../assets/p5.min.js"></script>
+  <script src="../assets/matter.min.js"></script>
+  <script>p5.disableFriendlyErrors = true;</script>
+
+  <style>
+    /* SECTION: tokens */
+    :root {
+      --paper: #f6f1e7;
+      --ink:   #161616;
+      --coral: #ff6b6b;
+      --teal:  #2ec4b6;
+      --sun:   #ffd23f;
+      --blue:  #3a86ff;
+      --pink:  #ff8fab;
+      --card:  #fffdf6;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { height: 100%; }
+    body {
+      background: var(--paper);
+      color: var(--ink);
+      overflow: hidden;
+      font-family: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB",
+                   "Microsoft YaHei", system-ui, sans-serif;
+      -webkit-font-smoothing: antialiased;
+      -webkit-touch-callout: none;
+      -webkit-user-select: none;
+      user-select: none;
+      overscroll-behavior: none;
+    }
+    body::before {
+      content: ""; position: fixed; inset: 0; z-index: 0;
+      pointer-events: none; opacity: .8;
+      background-image:
+        radial-gradient(#16161680 1px, transparent 1.6px),
+        radial-gradient(#16161650 1px, transparent 1.6px);
+      background-size: 34px 34px, 54px 54px;
+      background-position: 0 0, 17px 27px;
+    }
+
+    /* SECTION: stage */
+    .stage {
+      position: fixed; inset: 0; z-index: 1;
+      padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0)
+               env(safe-area-inset-bottom, 0) env(safe-area-inset-left, 0);
+    }
+    .stage canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+
+    /* SECTION: marquee */
+    .marquee {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 20;
+      background: var(--ink); color: var(--sun); overflow: hidden;
+      font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase;
+      padding: 9px 0; padding-top: calc(9px + env(safe-area-inset-top, 0));
+      pointer-events: none;
+    }
+    .marquee .in { display: inline-block; white-space: nowrap; animation: mq 44s linear infinite; }
+    @keyframes mq { to { transform: translateX(-50%); } }
+
+    /* SECTION: hud */
+    .hud { position: fixed; z-index: 30; pointer-events: none; }
+    .sticker {
+      background: var(--card);
+      border: 3px solid var(--ink);
+      border-radius: 14px;
+      box-shadow: 5px 5px 0 var(--sc, var(--ink));
+      padding: 8px 16px;
+    }
+    .hud-score {
+      top: calc(52px + env(safe-area-inset-top, 0));
+      left: calc(14px + env(safe-area-inset-left, 0));
+      --sc: var(--coral);
+      transform: rotate(-2deg);
+      font-weight: 900; font-size: clamp(16px, 3vw, 22px); letter-spacing: .06em;
+    }
+    .hud-best { display: block; font-size: 11px; font-weight: 700; letter-spacing: .18em; color: #6d675c; }
+    .hud-combo {
+      top: calc(120px + env(safe-area-inset-top, 0));
+      left: calc(14px + env(safe-area-inset-left, 0));
+      background: var(--sun);
+      border: 3px solid var(--ink); border-radius: 999px;
+      box-shadow: 4px 4px 0 var(--ink);
+      padding: 6px 16px;
+      font-weight: 900; font-size: 14px; letter-spacing: .1em;
+      transform: rotate(-3deg) scale(0);
+      transition: transform .25s cubic-bezier(.3, 1.6, .5, 1);
+    }
+    .hud-combo.on { transform: rotate(-3deg) scale(1); }
+    .hud-title {
+      top: calc(48px + env(safe-area-inset-top, 0));
+      left: 50%; transform: translateX(-50%) rotate(-1deg);
+      background: var(--ink); color: var(--paper);
+      font-size: 11px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase;
+      padding: 7px 14px;
+    }
+    @media (max-width: 640px) { .hud-title { display: none; } }
+
+    /* SECTION: overlay */
+    .overlay {
+      position: fixed; inset: 0; z-index: 40;
+      display: flex; align-items: center; justify-content: center;
+      padding: calc(24px + env(safe-area-inset-top, 0)) 24px calc(24px + env(safe-area-inset-bottom, 0));
+      background: rgba(22, 22, 22, .34);
+      overflow-y: auto; -webkit-overflow-scrolling: touch;
+    }
+    .overlay[hidden] { display: none; }
+    .panel {
+      max-width: 470px; width: 100%; text-align: center;
+      background: var(--card);
+      border: 4px solid var(--ink); border-radius: 22px;
+      box-shadow: 10px 10px 0 var(--ink);
+      padding: clamp(24px, 5vw, 36px) clamp(20px, 4vw, 32px);
+      animation: popin .5s cubic-bezier(.3, 1.6, .5, 1) both;
+    }
+    @keyframes popin { from { opacity: 0; transform: translateY(26px) scale(.94); } }
+    .panel .badge {
+      display: inline-block; background: var(--ink); color: var(--paper);
+      font-size: clamp(10px, 2.4vw, 12px); font-weight: 700;
+      letter-spacing: .3em; text-transform: uppercase;
+      padding: 7px 16px; transform: rotate(-2deg);
+    }
+    .panel h1 {
+      margin-top: 18px;
+      font-size: clamp(40px, 10vw, 76px); font-weight: 900; line-height: .95; letter-spacing: -.01em;
+      color: var(--paper);
+      text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--coral);
+    }
+    .panel h1 .pop { color: var(--sun); text-shadow: 4px 4px 0 var(--ink), 8px 8px 0 var(--blue); }
+    .panel .desc {
+      margin: 18px auto 6px; max-width: 34ch;
+      font-size: clamp(13.5px, 2.6vw, 15.5px); line-height: 1.75; color: #3c3a33;
+    }
+    .btn {
+      margin-top: 22px; min-height: 52px; min-width: 200px;
+      display: inline-flex; align-items: center; justify-content: center;
+      background: var(--sun); color: var(--ink);
+      border: 3px solid var(--ink); border-radius: 999px;
+      box-shadow: 0 6px 0 var(--ink);
+      font-family: inherit; font-size: clamp(16px, 3vw, 19px); font-weight: 900; letter-spacing: .14em;
+      cursor: pointer; touch-action: manipulation;
+      transition: transform .16s cubic-bezier(.3, 1.6, .5, 1), box-shadow .16s;
+    }
+    .btn:hover { transform: translateY(-2px); box-shadow: 0 8px 0 var(--ink); }
+    .btn:active { transform: translateY(4px); box-shadow: 0 1px 0 var(--ink); }
+    .btn:focus-visible { outline: 3px solid var(--blue); outline-offset: 4px; }
+    .final {
+      margin-top: 14px;
+      font-size: clamp(56px, 14vw, 92px); font-weight: 900; line-height: 1;
+      color: var(--blue); text-shadow: 4px 4px 0 var(--ink);
+    }
+    .final small { display: block; font-size: 12px; letter-spacing: .3em; color: #6d675c; text-shadow: none; margin-top: 6px; }
+    .newbest {
+      display: inline-block; margin-top: 10px;
+      background: var(--coral); color: var(--card);
+      border: 2px solid var(--ink); border-radius: 999px;
+      font-size: 12px; font-weight: 900; letter-spacing: .2em;
+      padding: 6px 14px; transform: rotate(-2deg);
+    }
+    .newbest[hidden] { display: none; }
+    .stats { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-top: 20px; }
+    .stat {
+      background: var(--paper); border: 2px solid var(--ink); border-radius: 12px;
+      padding: 8px 14px; min-width: 76px;
+      font-size: 12px; font-weight: 700; letter-spacing: .12em; color: #3c3a33;
+    }
+    .stat b { display: block; font-size: 20px; font-weight: 900; color: var(--ink); letter-spacing: 0; }
+
+    /* SECTION: shapes */
+    .sh {
+      position: fixed; z-index: 32; cursor: pointer;
+      touch-action: manipulation; will-change: transform;
+      transition: transform .35s cubic-bezier(.3, 1.6, .5, 1);
+    }
+    @media (hover: hover) { .sh:hover { transform: scale(1.12); } }
+    .sh:active { transform: scale(.94); }
+    .sh svg { display: block; width: 100%; height: 100%; overflow: visible; }
+
+    /* SECTION: corner */
+    .corner {
+      position: fixed; bottom: calc(12px + env(safe-area-inset-bottom, 0)); z-index: 32;
+      font-size: 10.5px; font-weight: 700; letter-spacing: .3em;
+      text-transform: uppercase; color: #6d675c; pointer-events: none;
+    }
+    .corner-l { left: 18px; }
+    .corner-r { right: 18px; }
+    @media (max-width: 640px) { .corner-r { display: none; } }
+
+    @media (prefers-reduced-motion: reduce) {
+      .marquee .in, .panel, .hud-combo, .sh, .btn { animation: none; transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <!-- SECTION: marquee -->
+  <div class="marquee" aria-hidden="true"><div class="in" id="mq"></div></div>
+
+  <!-- SECTION: stage -->
+  <div class="stage" id="stage"></div>
+
+  <!-- SECTION: hud -->
+  <div class="hud hud-score sticker"><span id="scoreV">0</span><span class="hud-best">最佳 <b id="bestV">0</b></span></div>
+  <div class="hud hud-combo" id="comboV">连击 ×1</div>
+  <div class="hud hud-title">jump jump · 跳一跳</div>
+
+  <!-- SECTION: shapes -->
+  <div id="shapes"></div>
+
+  <!-- SECTION: corners -->
+  <div class="corner corner-l" aria-hidden="true">fun apps society · est. 2026</div>
+  <div class="corner corner-r" aria-hidden="true">memphis vibes · 双击即玩 · nº 07</div>
+
+  <!-- SECTION: overlay-start -->
+  <div class="overlay" id="ovStart">
+    <div class="panel">
+      <span class="badge">jump jump · nº 07</span>
+      <h1>跳一跳<br><span class="pop">蓄力跳</span></h1>
+      <p class="desc">按住屏幕蓄力，松手起跳。踩中平台中心可连击加分（+2 / +4 / +6…），
+        停在唱片机 / 魔方 / 音乐盒上停留 1 秒触发彩蛋（+5 / +15 / +30）。
+        落空或倾倒即结束，来挑战最高分吧！</p>
+      <button class="btn" id="btnStart">开始游戏</button>
+    </div>
+  </div>
+
+  <!-- SECTION: overlay-end -->
+  <div class="overlay" id="ovEnd" hidden>
+    <div class="panel">
+      <span class="badge">game over · 摔倒了</span>
+      <div class="final"><span id="finalV">0</span><small>final score · 本局得分</small></div>
+      <div id="newbest" class="newbest" hidden>新纪录 · new best!</div>
+      <div class="stats">
+        <span class="stat"><b id="statCombo">0</b>最高连击</span>
+        <span class="stat"><b id="statBest">0</b>历史最佳</span>
+      </div>
+      <button class="btn" id="btnAgain">再来一局</button>
+    </div>
+  </div>
+
+  <script>
+    /* SECTION: marquee-init */
+    document.getElementById('mq').textContent =
+      'JUMP JUMP · 跳一跳 · 按住蓄力 · 中心连击 · 彩蛋方块 · 无规则 · 只管好玩 · '.repeat(18);
+  </script>
+
+  <script>
+    /* SECTION: shapes-init */
+    (function () {
+      'use strict';
+      var COLS = ['#ff6b6b', '#2ec4b6', '#ffd23f', '#3a86ff', '#ff8fab'];
+      var DEFS = [
+        function (c) { return { w: 120, h: 48, html: '<svg viewBox="0 0 150 60"><path d="M6 40 Q 22 8, 40 34 T 76 32 T 112 30 T 146 26" fill="none" stroke="' + c + '" stroke-width="11" stroke-linecap="round"/></svg>' }; },
+        function (c) { return { w: 72, h: 66, html: '<svg viewBox="0 0 90 82"><polygon points="45,4 88,78 2,78" fill="' + c + '"/></svg>' }; },
+        function (c) { return { w: 76, h: 76, html: '<svg viewBox="0 0 96 96"><circle cx="48" cy="48" r="42" fill="' + c + '"/><circle cx="48" cy="48" r="24" fill="none" stroke="#f6f1e7" stroke-width="6" stroke-dasharray="2 12" stroke-linecap="round"/></svg>' }; },
+        function (c) { return { w: 96, h: 50, html: '<svg viewBox="0 0 120 62"><path d="M2 60 A 58 58 0 0 1 118 60 Z" fill="' + c + '"/></svg>' }; },
+        function (c) { return { w: 128, h: 36, html: '<svg viewBox="0 0 160 44"><polyline points="6,34 30,8 54,34 78,8 102,34 126,8 150,34" fill="none" stroke="' + c + '" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/></svg>' }; }
+      ];
+      var SPOTS = [[2, 34, -6], [86, 46, 5], [8, 62, 8]];
+      var host = document.getElementById('shapes');
+      SPOTS.forEach(function (sp, i) {
+        var di = i % DEFS.length, ci = i % 5;
+        var d = DEFS[di](COLS[ci]);
+        var el = document.createElement('div');
+        el.className = 'sh';
+        el.style.left = 'min(' + sp[0] + '%, 100% - ' + (d.w + 12) + 'px)';
+        el.style.top = 'calc(' + sp[1] + '% + 40px)';
+        el.style.width = d.w + 'px';
+        el.style.height = d.h + 'px';
+        el.style.rotate = sp[2] + 'deg';
+        el.dataset.rot = sp[2]; el.dataset.ci = ci; el.dataset.di = di;
+        el.setAttribute('aria-hidden', 'true');
+        el.innerHTML = d.html;
+        el.addEventListener('click', function () {
+          var c2 = (+el.dataset.ci + 1) % 5;
+          el.dataset.ci = c2;
+          var r = (+el.dataset.rot) + 22;
+          el.dataset.rot = r;
+          el.innerHTML = DEFS[+el.dataset.di](COLS[c2]).html;
+          el.style.rotate = r + 'deg';
+          el.style.transform = 'scale(1.15)';
+          setTimeout(function () { el.style.transform = ''; }, 240);
+        });
+        host.appendChild(el);
+      });
+    })();
+  </script>
+
+  <!-- 按依赖顺序加载：config -> state -> physics -> input -> render -> main -->
+  <script src="config.js"></script>
+  <script src="state.js"></script>
+  <script src="physics.js"></script>
+  <script src="input.js"></script>
+  <script src="render.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>
