@@ -50,6 +50,7 @@ function setup() {
   p5Ref = this;
   Render.init(this);
   Input.bind(this);
+  Ships.init(this);
   Physics.init();
 
   computeLayout();
@@ -80,6 +81,7 @@ function draw() {
 
     case GAME_STATE.RALLY:
       updatePaddles();
+      Ships.update();          // 先移动飞船，再推进物理（碰撞用最新位置）
       Physics.step(dt);
       updateGame();
       renderGame();
@@ -138,6 +140,8 @@ function setupGame() {
 }
 
 function rebuildBodies() {
+  // 先清飞船（此时 Physics.remove 仍指向旧世界）
+  Ships.reset();
   // 尺寸变化时重建（先清空世界再建，避免残留刚体）
   Physics.clear();
   Physics.init();
@@ -206,6 +210,7 @@ function registerCollisions() {
   Physics.onPair('ball', 'paddle1', () => onPaddleHit(1));
   Physics.onPair('ball', 'paddle2', () => onPaddleHit(2));
   Physics.onPair('ball', 'wall', () => { state.flash.wall = 8; });
+  Physics.onPair('ball', 'ship', onShipHit);
 }
 
 // 击中板子：按「击球点偏移 + 板子横移速度」重算出射方向
@@ -259,6 +264,49 @@ function onPaddleHit(playerId) {
   state.flash['p' + playerId] = 10;
 }
 
+// 击中飞船：镜面反弹 + 飞船动量叠加（设计文档 §5）
+function onShipHit(bodyA, bodyB, pair) {
+  const shipBody = bodyA.label === 'ship' ? bodyA : bodyB;
+  const G = CONFIG.game;
+  const S = CONFIG.space;
+
+  // 1) Matter 已完成镜面反射（restitution=1），在其结果上叠加飞船横移动量
+  let vx = ball.velocity.x + Ships.getVx(shipBody) * S.momentumTransfer;
+  let vy = ball.velocity.y;
+
+  // 2) 速度归一：撞击不改变回合节奏
+  const speed = state.ballSpeed;
+  const mag = Math.hypot(vx, vy) || 1;
+  vx = (vx / mag) * speed;
+  vy = (vy / mag) * speed;
+
+  // 3) 竖直分量下限：防水平死球（与 onPaddleHit 同款保障）
+  const minVy = speed * G.minVerticalRatio;
+  if (Math.abs(vy) < minVy) {
+    const sign = vy === 0 ? (Math.random() < 0.5 ? -1 : 1) : Math.sign(vy);
+    vy = minVy * sign;
+    const remain = Math.sqrt(Math.max(0, speed * speed - vy * vy));
+    vx = Math.sign(vx || 1) * remain;
+  }
+  Matter.Body.setVelocity(ball, { x: vx, y: vy });
+
+  // 4) 沿碰撞法线弹出（方向校正为指向球），防同帧重复触发/粘滞
+  let nx = pair.collision.normal.x;
+  let ny = pair.collision.normal.y;
+  const toBallX = ball.position.x - shipBody.position.x;
+  const toBallY = ball.position.y - shipBody.position.y;
+  if (nx * toBallX + ny * toBallY < 0) { nx = -nx; ny = -ny; }
+  const support = (S.physW / 2) * Math.abs(nx) + (S.physH / 2) * Math.abs(ny);
+  const dist = support + G.ballRadius + 2;
+  Matter.Body.setPosition(ball, {
+    x: shipBody.position.x + nx * dist,
+    y: shipBody.position.y + ny * dist,
+  });
+
+  // 5) 掉血 / 爆炸
+  Ships.hit(shipBody);
+}
+
 // =====================================================================
 // updatePaddles — 板子跟手移动（每帧）
 // =====================================================================
@@ -310,6 +358,19 @@ function updateGame() {
     return;
   }
 
+  // 飞船挤压兜底：球心落入任一飞船外扩矩形（按球半径外扩）时，沿最短轴弹出
+  Ships.forEachRect((x, y, w, h) => {
+    const ex = x - r, ey = y - r, ew = w + r * 2, eh = h + r * 2;
+    const bx = ball.position.x, by = ball.position.y;
+    if (bx <= ex || bx >= ex + ew || by <= ey || by >= ey + eh) return;
+    const dl = bx - ex, dr = ex + ew - bx, dt = by - ey, db = ey + eh - by;
+    const m = Math.min(dl, dr, dt, db);
+    if (m === dl) Matter.Body.setPosition(ball, { x: ex, y: by });
+    else if (m === dr) Matter.Body.setPosition(ball, { x: ex + ew, y: by });
+    else if (m === dt) Matter.Body.setPosition(ball, { x: bx, y: ey });
+    else Matter.Body.setPosition(ball, { x: bx, y: ey + eh });
+  });
+
   // 兜底：极端情况下球被挤出左右墙，拉回场内
   const lx = playLeft() + r;
   const rx = playRight() - r;
@@ -327,6 +388,8 @@ function recordTrail() {
 }
 
 function scorePoint(playerId) {
+  Ships.reset();
+
   if (playerId === PLAYER.P1) state.scoreP1++;
   else state.scoreP2++;
 
@@ -404,6 +467,7 @@ function serveBall() {
 // =====================================================================
 
 function resetMatch() {
+  Ships.reset();
   state.scoreP1 = 0;
   state.scoreP2 = 0;
   state.winner = 0;
@@ -537,7 +601,7 @@ function keyReleased() {
 // =====================================================================
 
 function renderGame() {
-  Render.drawBackground();
+  Render.drawBackground(currentMode().key === 'space' && state.phase !== GAME_STATE.MENU);
 
   if (state.phase === GAME_STATE.MENU) {
     drawMenu();
@@ -546,6 +610,7 @@ function renderGame() {
   }
 
   drawArena();
+  Ships.draw();
   drawTrail();
   drawPaddle(paddle1, PLAYER.P1);
   drawPaddle(paddle2, PLAYER.P2);
