@@ -107,7 +107,7 @@ body::before {
   padding: 9px 0;
   padding-top: calc(9px + env(safe-area-inset-top, 0));
 }
-.marquee .in { display: inline-block; white-space: nowrap; animation: mq 22s linear infinite; }
+.marquee .in { display: inline-block; white-space: nowrap; animation: mq 44s linear infinite; }
 @keyframes mq { to { transform: translateX(-50%); } }
 ```
 

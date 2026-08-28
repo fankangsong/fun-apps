@@ -47,7 +47,7 @@
       font-size: 12px; font-weight: 700; letter-spacing: .34em; text-transform: uppercase;
       padding: 9px 0; padding-top: calc(9px + env(safe-area-inset-top, 0));
     }
-    .marquee .in { display: inline-block; white-space: nowrap; animation: mq 22s linear infinite; }
+    .marquee .in { display: inline-block; white-space: nowrap; animation: mq 44s linear infinite; }
     @keyframes mq { to { transform: translateX(-50%); } }
 
     /* ===================== 首屏游乐场 ===================== */
@@ -223,7 +223,7 @@
   <main class="wrap">
     <section class="games" id="games">
       <header class="games-head">
-        <h2>游戏目录 <b>· 五件可玩之物</b></h2>
+        <h2>游戏目录 <b>· 六件可玩之物</b></h2>
         <svg class="squiggle" width="170" height="30" viewBox="0 0 170 30" aria-hidden="true">
           <path d="M5 20 Q 20 4, 35 18 T 65 16 T 95 14 T 125 12 T 165 10" fill="none" stroke="#161616" stroke-width="9" stroke-linecap="round" transform="translate(3,3)"/>
           <path d="M5 20 Q 20 4, 35 18 T 65 16 T 95 14 T 125 12 T 165 10" fill="none" stroke="#ffd23f" stroke-width="9" stroke-linecap="round"/>
@@ -245,19 +245,10 @@
     // =====================================================================
     const GAMES = [
       {
-        dir: 'basketball-2d',
-        entry: 'basketball.html',
-        icon: '🏀',
-        name: '投石机',
-        en: 'the basket-thrower',
-        desc: '弹弓式投石机，杠杆配重带动投掷，距离越远得分越高，空心球翻倍。',
-        tags: ['物理', '单人', '计分'],
-      },
-      {
         dir: 'duel-balls',
         entry: 'index.html',
         icon: '⚡',
-        name: '双钟摆',
+        name: '兵乓球',
         en: 'the dual pendulum',
         desc: '上下分屏类 Pong 双人对战，板子接球回击，难度可选，能量越大震幅越猛。',
         tags: ['对战', 'Pong', '难度'],
@@ -288,6 +279,15 @@
         en: 'the time speaker',
         desc: '拖动分针，可视化 past / to / half 规则，语块逐词点亮，顺读逆读双语切换。',
         tags: ['英语', '教学', '时钟'],
+      },
+      {
+        dir: 'street-hoops',
+        entry: 'street-hoops.html',
+        icon: '🏀',
+        name: '街头投篮',
+        en: 'street hoops',
+        desc: '按住拖拽蓄力出手，空心球 +3、连击翻倍，45 秒限时挑战最佳分。',
+        tags: ['投篮', '物理', '限时'],
       },
     ];
 
