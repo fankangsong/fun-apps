@@ -806,25 +806,25 @@ function drawHUD() {
     cx, 16
   );
 
-  // HUD 操作提示（加大字号到 14px，留安全边距避免贴近板子/边角被截断）
+  // HUD 操作提示（画在可玩区内，避免压左右墙的描边线）
   textStyle(BOLD);
-  textSize(14);
+  textSize(15);
   fill(PALETTE.ink);
-  // P1 提示：底部左侧（远离底部板子，留 56px 安全距离）
+  // P1 提示：底部左侧（远离底部板子，留足安全距离）
   textAlign(LEFT, BOTTOM);
-  text('P1 · 下半屏拖动 / A · D', 18, height - 56);
+  text('P1 · 下半屏拖动 / A · D', playLeft() + 18, height - 56);
   // P2 提示：顶部右侧（远离顶部信息条）
   textAlign(RIGHT, BOTTOM);
-  text('P2 · 上半屏拖动 / J · L', width - 18, 40);
+  text('P2 · 上半屏拖动 / J · L', playRight() - 18, 44);
   textStyle(NORMAL);
 
   // 角落俱乐部标注（弱化大字距，留安全边距）
-  textSize(10.5);
+  textSize(12);
   fill(PALETTE.inkSoft);
   textAlign(LEFT, BOTTOM);
-  text('fun apps society · est. 2026', 18, height - 18);
+  text('fun apps society · est. 2026', playLeft() + 18, height - 18);
   textAlign(RIGHT, BOTTOM);
-  text('memphis vibes · 双击即玩 · nº 04', width - 18, height - 18);
+  text('memphis vibes · 双击即玩 · nº 04', playRight() - 18, height - 18);
   pop();
 }
 
@@ -838,6 +838,7 @@ function drawServeHint() {
   // 黑底胶囊提示（Memphis 徽章）
   const msg = isP1 ? 'P1 发球 · 拖动瞄准 · 松手 / 点击发出' : 'P2 发球 · 拖动瞄准 · 松手 / 点击发出';
   noStroke();
+  textSize(18);                    // 必须先设字号再测量，否则胶囊宽度按默认 12px 计算
   const w = textWidth(msg) + 44;
   fill(PALETTE.ink);
   rect(width / 2 - w / 2, y - 19, w, 38, 19);
@@ -880,11 +881,11 @@ function drawGameOver() {
   const hint = '点击任意处 / 按 R 再来一局';
   textAlign(CENTER, CENTER);
   noStroke();
+  textSize(16);                    // 必须先设字号再测量，否则胶囊宽度按默认 12px 计算
   const w = textWidth(hint) + 44;
   fill(PALETTE.ink);
   rect(width / 2 - w / 2, height / 2 + 72, w, 40, 20);
   fill(PALETTE.sun);
-  textSize(16);
   text(hint, width / 2, height / 2 + 92);
   pop();
 }
