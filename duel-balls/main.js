@@ -957,6 +957,15 @@ function drawMenuShapes() {
 function drawMenu() {
   drawMenuShapes();
 
+  // 选中太空模式时，菜单追加一艘像素飞船贴纸（旋转 -4°）
+  if (currentMode().key === 'space') {
+    push();
+    translate(width * 0.32, height * 0.16);
+    rotate(radians(-4));
+    Ships.drawSprite(0, 0, 5, 'blue', 1, CONFIG.space.shipHP, PALETTE.coral, false);
+    pop();
+  }
+
   push();
   textAlign(CENTER, CENTER);
   noStroke();
