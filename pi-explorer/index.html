@@ -240,7 +240,7 @@ let d = 100;                // 轮子直径
 let x = 0, targetX = null;
 let roll = 0, turns = 0;
 let badgeTimer = 0, stars = [];
-let dragging = false, dragDX = 0;
+let dragging = false, dragDX = 0, dragPointerId = null;
 let mode = 'none';          // 'none' | 'wheel'
 let hoverCell = -1;
 let roadY = 500;
@@ -275,6 +275,41 @@ function setup() {
     dVal.textContent = d;
     syncRoll(false);
   });
+
+  // ================= 交互：原生 Pointer Events（鼠标 / 触摸统一路径） =================
+  // p5 1.11.3 的 touchstart 只调用 touchStarted、不回退 mousePressed，
+  // 触屏拖拽必须自行绑定（配合 canvas 的 touch-action: none 阻止滚动缩放）
+  const cv = window.canvas;
+  const pointers = new Map();                      // pointerId -> {x, y}
+  cv.addEventListener('pointerdown', (e) => {
+    const px = e.clientX, py = e.clientY;          // canvas fixed inset:0，client 坐标即画布坐标
+    pointers.set(e.pointerId, { x: px, y: py });
+    try { cv.setPointerCapture(e.pointerId); } catch (_) { } // 指针已失效时抛错，不必中断按下逻辑
+    if (dist(px, py, x, roadY - R()) < R() + 34) { // 抓住轮子
+      mode = 'wheel'; dragging = true; dragPointerId = e.pointerId;
+      dragDX = x - px; targetX = null;
+      return;
+    }
+    if (py > roadY && py < roadY + RH && !dragging) { // 点直尺 → 滚过去
+      targetX = constrain(px, startX, width - 60);
+    }
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!pointers.has(e.pointerId)) return;
+    pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (dragging && e.pointerId === dragPointerId) {  // 只认抓住轮子的那根手指
+      x = constrain(e.clientX + dragDX, startX, width - 60);
+      syncRoll(true);
+    }
+  });
+  const release = (e) => {                           // up / cancel 对称清理
+    pointers.delete(e.pointerId);
+    if (e.pointerId === dragPointerId) {
+      dragging = false; mode = 'none'; dragPointerId = null;
+    }
+  };
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
 
   layout();
   x = startX;
@@ -540,24 +575,6 @@ function updatePanels() {
   }
 }
 
-// ================= 交互 =================
-// 触摸端由 p5 自动将 touch 事件映射为 mouse*（配合 canvas 的 touch-action: none 阻止滚动）
-function mousePressed() {
-  if (dist(mouseX, mouseY, x, roadY - R()) < R() + 34) {
-    mode = 'wheel'; dragging = true; dragDX = x - mouseX; targetX = null;
-    return;
-  }
-  if (mouseY > roadY && mouseY < roadY + RH) {        // 点直尺 → 滚过去
-    targetX = constrain(mouseX, startX, width - 60);
-  }
-}
-function mouseDragged() {
-  if (dragging) {
-    x = constrain(mouseX + dragDX, startX, width - 60);
-    syncRoll(true);
-  }
-}
-function mouseReleased() { dragging = false; mode = 'none'; }
 </script>
 </body>
 </html>

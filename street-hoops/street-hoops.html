@@ -88,6 +88,51 @@
       transition: transform .25s cubic-bezier(.3, 1.6, .5, 1);
     }
     .hud-combo.on { transform: rotate(-3deg) scale(1); }
+    /* SECTION: side-picker */
+    .side-pick {
+      top: calc(112px + env(safe-area-inset-top, 0));
+      right: calc(14px + env(safe-area-inset-right, 0));
+      z-index: 36;                 /* 高于装饰图形(32)，低于开始/结束面板(40) */
+      pointer-events: auto;
+      display: flex; flex-direction: column; align-items: flex-end; gap: 8px;
+    }
+    .side-btn {
+      background: var(--teal); color: var(--ink);
+      border: 3px solid var(--ink); border-radius: 999px;
+      box-shadow: 4px 4px 0 var(--ink);
+      padding: 0 16px; min-height: 44px; min-width: 116px;
+      font-family: inherit; font-size: 13px; font-weight: 900; letter-spacing: .1em;
+      cursor: pointer; touch-action: manipulation;
+      transition: transform .16s cubic-bezier(.3, 1.6, .5, 1), box-shadow .16s;
+    }
+    .side-btn:active { transform: translate(2px, 2px); box-shadow: 1px 1px 0 var(--ink); }
+    .side-btn:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
+    .side-btn .arrow { display: inline-block; margin-left: 6px; transition: transform .2s; }
+    .side-btn.on .arrow { transform: rotate(180deg); }
+    .side-menu {
+      background: var(--card); border: 3px solid var(--ink); border-radius: 16px;
+      box-shadow: 5px 5px 0 var(--ink);
+      padding: 8px; display: flex; flex-direction: column; gap: 8px; min-width: 168px;
+      animation: popin .28s cubic-bezier(.3, 1.6, .5, 1) both;
+    }
+    .side-menu[hidden] { display: none; }
+    .side-opt {
+      min-height: 48px; padding: 0 12px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: var(--paper); color: var(--ink);
+      border: 3px solid var(--ink); border-radius: 12px;
+      font-family: inherit; font-size: 15px; font-weight: 900; letter-spacing: .06em;
+      cursor: pointer; touch-action: manipulation;
+    }
+    .side-opt .dot {
+      width: 16px; height: 16px; border-radius: 50%;
+      border: 3px solid var(--ink); background: transparent;
+    }
+    .side-opt[aria-pressed="true"] { background: var(--sun); }
+    .side-opt[aria-pressed="true"] .dot { background: var(--coral); }
+    .side-opt:active { transform: translateY(2px); }
+    .side-opt:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+
     .hud-title {
       top: calc(48px + env(safe-area-inset-top, 0));
       left: 50%; transform: translateX(-50%) rotate(-1deg);
@@ -186,7 +231,7 @@
     @media (max-width: 640px) { .corner-r { display: none; } }
 
     @media (prefers-reduced-motion: reduce) {
-      .marquee .in, .panel, .hud-combo, .sh, .btn { animation: none; transition: none; }
+      .marquee .in, .panel, .hud-combo, .sh, .btn, .side-btn, .side-menu { animation: none; transition: none; }
     }
   </style>
 </head>
@@ -205,6 +250,15 @@
   <div class="hud hud-combo" id="comboV">🔥 连击 ×1</div>
   <div class="hud hud-title">street hoops · 街头投篮</div>
 
+  <!-- SECTION: side-picker -->
+  <div class="hud side-pick" id="sidePick">
+    <button class="side-btn" id="btnSide" aria-haspopup="true" aria-expanded="false">场地 · 右侧<span class="arrow">▲</span></button>
+    <div class="side-menu" id="sideMenu" role="menu" hidden>
+      <button class="side-opt" role="menuitemradio" data-side="1" aria-pressed="true">篮架在右侧<span class="dot"></span></button>
+      <button class="side-opt" role="menuitemradio" data-side="-1" aria-pressed="false">篮架在左侧<span class="dot"></span></button>
+    </div>
+  </div>
+
   <!-- SECTION: shapes -->
   <div id="shapes"></div>
 
@@ -217,7 +271,7 @@
     <div class="panel">
       <span class="badge">street hoops · nº 06</span>
       <h1>街头<br><span class="pop">投篮</span></h1>
-      <p class="desc">按住篮球停顿片刻，可把它拖拽摆到场内任意位置（含空中）；直接快速拖拽则蓄力投篮。未碰筐板的空心球 +3，擦筐命中 +2；连续进球有连击加成，45 秒内尽情出手！</p>
+      <p class="desc">按住篮球停顿片刻，可把它拖拽摆到场内任意位置（含空中）；直接快速拖拽则蓄力投篮。未碰筐板的空心球 +3，擦筐命中 +2；连续进球有连击加成，45 秒内尽情出手！右上角「场地」按钮可随时把篮架换到左侧或右侧。</p>
       <button class="btn" id="btnStart" data-primary-action>开始游戏</button>
     </div>
   </div>
@@ -293,6 +347,14 @@
       /* SECTION: consts */
       var INK = '#161616', PAPER = '#f6f1e7', CARD = '#fffdf6';
       var CORAL = '#ff6b6b', TEAL = '#2ec4b6', SUN = '#ffd23f', BLUE = '#3a86ff', PINK = '#ff8fab';
+      var BALL_ORANGE = '#f5852f', BALL_DARK = '#cf5f16';   // 篮球主体 / 底部暗面
+      /* 篮球尺寸规则：篮圈围度 = π × rimW（rimW 即篮圈直径）
+         球围度 = 篮圈围度 × BALL_GIRTH_RATIO（围度 -20%，即球直径 = rimW × 0.8）；
+         但该比例下球几乎塞满篮圈（两侧净空仅剩 3%，球无法穿过），
+         故再取可玩上限 BALL_FIT_RATIO（球直径 / 篮圈直径）做钳制。 */
+      var BALL_GIRTH_RATIO = 0.8;
+      var BALL_FIT_RATIO = 0.6;
+      var HOOP_Y_RATIO = 0.46;     // 篮筐固定高度（占屏高比例）：不再逐局随机
       var GRAVITY = 2000;          // px/s^2
       var LAUNCH_K = 7.0;          // 拖拽像素 -> 初速度系数
       var MAX_SPEED = 1900;        // 最大出手速度
@@ -303,6 +365,7 @@
       var GROUND_REST = 0.5;
       var ROUND_TIME = 45;         // 每局秒数
       var BEST_KEY = 'streetHoopsBest_v1';
+      var SIDE_KEY = 'streetHoopsSide_v1';
       var FONT = '"Avenir Next","Segoe UI","PingFang SC","Microsoft YaHei",system-ui,sans-serif';
 
       /* SECTION: dom */
@@ -323,6 +386,10 @@
       var statAtt = document.getElementById('statAtt');
       var statSwish = document.getElementById('statSwish');
       var statStreak = document.getElementById('statStreak');
+      var sidePick = document.getElementById('sidePick');
+      var btnSide = document.getElementById('btnSide');
+      var sideMenu = document.getElementById('sideMenu');
+      var sideOpts = sideMenu.querySelectorAll('.side-opt');
 
       /* SECTION: state */
       var W = 0, H = 0, dpr = 1;
@@ -334,7 +401,8 @@
       var ball = { x: 0, y: 0, vx: 0, vy: 0, spin: 0 };
       var ballResting = true;
       var shot = null;             // { active, scored, swishable, touched, t }
-      var hoop = { x: 0, y: 0, sway: 0, flash: 0 };
+      var hoop = { x: 0, y: 0, sway: 0, flash: 0 };   // hoop.x = 圈口靠篮板那一端
+      var side = 1;                    // 篮架朝向：1 = 屏幕右侧，-1 = 屏幕左侧
       var dragId = null, drag = null, shakeT = 0;
       var lastShotPos = null;      // 上次出手位置：之后每次球的重生点
       var parts = [], popups = [];
@@ -342,26 +410,25 @@
 
       function groundY() { return H - Math.max(40, H * 0.07); }
       function ballRestY() { return groundY() - ballR - 2; }
-      function rimTips() { return { x1: hoop.x - rimW, x2: hoop.x }; }
-      function boardX() { return hoop.x + rimW * 0.2; }
+      /* 圈口两端：x1 = 外侧端，x2 = 靠篮板端（随 side 镜像） */
+      function rimTips() { return { x1: hoop.x - side * rimW, x2: hoop.x }; }
+      function rimMinX() { var t = rimTips(); return Math.min(t.x1, t.x2); }
+      function rimMaxX() { var t = rimTips(); return Math.max(t.x1, t.x2); }
+      function rimMidX() { return hoop.x - side * rimW * 0.5; }
+      function boardX() { return hoop.x + side * rimW * 0.2; }
       function boardTop() { return hoop.y - rimW * 1.06; }
       function boardBot() { return hoop.y + rimW * 0.5; }
       function boardR() { return Math.max(3.5, rimW * 0.055); }
-      /* 篮板透视几何：正面窄竖平行四边形 + 右侧厚度面，px 为立杆中心 */
-      function boardFace() {
-        var bt = boardTop(), bh = boardBot() - bt;
-        var fx = boardX() - boardR();
-        var faceW = rimW * 0.30, depth = rimW * 0.16;
-        var rx = fx + faceW;
-        return { fx: fx, rx: rx, depth: depth, bt: bt, bh: bh,
-                 sk: bh * 0.05, bhR: bh * 0.94, px: rx + depth * 0.45 };
-      }
       function rimR() { return Math.max(4.5, rimW * 0.07); }
       function streakMult() { return streak >= 6 ? 3 : (streak >= 3 ? 2 : 1); }
 
       /* SECTION: storage */
       try { best = parseInt(localStorage.getItem(BEST_KEY), 10) || 0; } catch (e) { best = 0; }
       bestV.textContent = best;
+      try {
+        var sv = parseInt(localStorage.getItem(SIDE_KEY), 10);
+        if (sv === 1 || sv === -1) side = sv;
+      } catch (e) {}
 
       /* SECTION: audio */
       var actx = null, sfxT = 0;
@@ -413,19 +480,35 @@
         cv.width = Math.round(W * dpr);
         cv.height = Math.round(H * dpr);
         ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        ballR = Math.max(12, Math.min(19, W * 0.026));
-        rimW = Math.max(58, Math.min(86, W * 0.1));
+        rimW = Math.max(66, Math.min(96, W * 0.11));
+        var rGirth = rimW * BALL_GIRTH_RATIO * 0.5;   // 围度 -20% 推出的球半径
+        var rFit = rimW * BALL_FIT_RATIO * 0.5;       // 保证能穿过篮圈的球半径上限
+        ballR = Math.max(14, Math.min(rGirth, rFit));
+      }
+      /* 篮架横向钳制：篮板/立柱不出屏，且出手侧留够空间 */
+      function clampHoopX(x) {
+        var edgeOff = rimW * 0.7 + 10;                 // hoop.x 到篮架最外缘的距离
+        var room = Math.max(90, rimW * 1.2);           // 出手侧至少留出的空间
+        var lo, hi;
+        if (side > 0) { lo = rimW + room; hi = W - 6 - edgeOff; }
+        else { lo = 6 + edgeOff; hi = W - rimW - room; }
+        if (hi < lo) return (lo + hi) / 2;
+        return Math.min(Math.max(x, lo), hi);
+      }
+      /* 篮筐高度钳制：篮板顶端不压到顶部跑马灯，篮筐离地留足投射空间。
+         moveHoop() 与 resize 共用同一区间，避免旋转/分屏后漂移到异常高度。 */
+      function clampHoopY(y) {
+        var top = 66 + rimW * 1.06;                          // 篮板顶端下限
+        var bot = Math.min(groundY() - rimW * 1.1, H * 0.62); // 篮筐下限
+        if (bot < top) return (top + bot) / 2;
+        return Math.min(Math.max(y, top), bot);
       }
       function moveHoop() {
-        var margin = Math.max(160, W * 0.12);
-        var minX = Math.min(Math.max(W * 0.5, ball.x + rimW + margin), W * 0.86);
-        var maxX = W * 0.86;
-        hoop.x = minX + Math.random() * Math.max(0, maxX - minX);
-        var minY = Math.max(120 + rimW, H * 0.4);
-        var maxY = Math.max(minY + 1, H * 0.58);
-        hoop.y = minY + Math.random() * (maxY - minY);
-        var edge = boardX() + rimW * 0.5 + 10;
-        if (edge > W) hoop.x -= (edge - W);
+        /* 篮架靠边站：圈口靠板端落在距该侧边缘约 20% 宽度处，附带小幅随机 */
+        var target = side > 0 ? W * 0.8 : W * 0.2;
+        hoop.x = clampHoopX(target + (Math.random() * 2 - 1) * rimW * 0.35);
+        /* 高度固定：刷新/开局/切场地都落在同一高度，难度稳定可比 */
+        hoop.y = clampHoopY(H * HOOP_Y_RATIO);
         hoop.sway = 1.1;
       }
       function spawnBall() {
@@ -435,8 +518,8 @@
           ball.x = lp.x; ball.y = lp.y;
         } else {
           var off = Math.max(140, Math.min(420, W * 0.18));
-          ball.x = hoop.x - rimW - off;
-          if (ball.x < ballR + 10) ball.x = ballR + 10;
+          ball.x = hoop.x - side * (rimW + off);
+          ball.x = Math.min(Math.max(ball.x, ballR + 10), W - ballR - 10);
           ball.y = ballRestY();
         }
         ball.vx = 0; ball.vy = 0; ball.spin = 0;
@@ -470,6 +553,38 @@
         x = Math.min(Math.max(x, ballR + 6), W - ballR - 6);
         y = Math.min(Math.max(y, 64 + ballR), ballRestY());
         return { x: x, y: y };
+      }
+
+      /* SECTION: side-picker */
+      function syncSide() {
+        btnSide.innerHTML = '场地 · ' + (side > 0 ? '右侧' : '左侧') + '<span class="arrow">▲</span>';
+        for (var i = 0; i < sideOpts.length; i++) {
+          sideOpts[i].setAttribute('aria-pressed', (+sideOpts[i].dataset.side === side) ? 'true' : 'false');
+        }
+      }
+      function openSideMenu() {
+        sideMenu.hidden = false;
+        btnSide.classList.add('on');
+        btnSide.setAttribute('aria-expanded', 'true');
+      }
+      function closeSideMenu() {
+        sideMenu.hidden = true;
+        btnSide.classList.remove('on');
+        btnSide.setAttribute('aria-expanded', 'false');
+      }
+      /* 切换场地：篮架整体镜像到另一侧，球回到新的默认发球点 */
+      function setSide(s) {
+        s = s > 0 ? 1 : -1;
+        closeSideMenu();
+        if (s === side) return;
+        side = s;
+        try { localStorage.setItem(SIDE_KEY, String(side)); } catch (e) {}
+        syncSide();
+        moveHoop();
+        drag = null; dragId = null; shot = null;
+        lastShotPos = null; ballResting = true;
+        spawnBall();
+        tone(523, 0.07, 'triangle', 0.08);
       }
 
       /* SECTION: game-flow */
@@ -546,8 +661,8 @@
           best = score; bestBeaten = true;
           try { localStorage.setItem(BEST_KEY, String(best)); } catch (e) {}
         }
-        popup(swish ? '+' + pts + ' 空心!' : '+' + pts, hoop.x - rimW * 0.5, hoop.y - rimW * 0.9, swish ? TEAL : SUN);
-        for (var i = 0; i < (swish ? 26 : 16); i++) confetti(hoop.x - rimW * 0.5, hoop.y);
+        popup(swish ? '+' + pts + ' 空心!' : '+' + pts, rimMidX(), hoop.y - rimW * 0.9, swish ? TEAL : SUN);
+        for (var i = 0; i < (swish ? 26 : 16); i++) confetti(rimMidX(), hoop.y);
         hoop.sway = 1; hoop.flash = 1; shakeT = 0.16;
         sfx(swish ? 'swish' : 'make');
         syncScore(); syncCombo();
@@ -572,7 +687,7 @@
         /* 得分判定：向下穿过篮圈平面且位于圈内 */
         var t = rimTips();
         if (!shot.scored && !shot.missed && ball.vy > 0 && prevY < hoop.y && ball.y >= hoop.y &&
-            ball.x > t.x1 + ballR * 0.35 && ball.x < t.x2 - ballR * 0.35) {
+            ball.x > rimMinX() + ballR * 0.35 && ball.x < rimMaxX() - ballR * 0.35) {
           onMade(shot.swishable);
         }
 
@@ -598,10 +713,12 @@
 
         /* 篮板碰撞 */
         var bx = boardX(), br = boardR();
-        if (ball.vx > 0 && ball.x + ballR > bx - br && ball.x < bx + br * 2 + ballR &&
+        var intoBoard = side > 0 ? (ball.vx > 0 && ball.x + ballR > bx - br)
+                                 : (ball.vx < 0 && ball.x - ballR < bx + br);
+        if (intoBoard && ball.x > bx - br * 2 - ballR && ball.x < bx + br * 2 + ballR &&
             ball.y > boardTop() - ballR * 0.4 && ball.y < boardBot() + ballR * 0.4) {
-          ball.x = bx - br - ballR;
-          ball.vx = -Math.abs(ball.vx) * REST;
+          ball.x = bx - side * (br + ballR);
+          ball.vx = -side * Math.abs(ball.vx) * REST;   // 触碰篮板后弹回场内
           ball.vy *= 0.985;
           shot.swishable = false; shot.touched = true;
           sfx('rim');
@@ -787,13 +904,15 @@
            斜撑从水平臂斜向下连到篮板下部，形成三角形刚性支撑。 */
         var t = rimTips();
         var armH = Math.max(5, rimR() * 1.4);
-        ctx.fillRect(t.x2 - 1, hoop.y - armH / 2, bx - t.x2 + 1, armH);
+        /* 水平臂从篮板伸向篮圈靠板端，并向圈内多探 1px 盖住接缝（随 side 镜像） */
+        var armX = side > 0 ? (t.x2 - 1) : bx;
+        ctx.fillRect(armX, hoop.y - armH / 2, Math.abs(bx - t.x2) + 1, armH);
         ctx.strokeStyle = INK;
         ctx.lineWidth = Math.max(3.5, rimR() * 0.9);
         ctx.lineCap = 'round';
         ctx.beginPath();
         ctx.moveTo(t.x2 + (bx - t.x2) * 0.45, hoop.y + armH * 0.5);
-        ctx.lineTo(bx - br * 0.2, hoop.y + rimW * 0.3);
+        ctx.lineTo(bx - side * br * 0.2, hoop.y + rimW * 0.3);
         ctx.stroke();
         /* 篮板：侧面观察 —— 只看到薄薄的侧边厚度面（窄竖条）。
            板面的正面（黄方块、红点）背对视线，不绘制。 */
@@ -802,31 +921,51 @@
         ctx.strokeRect(bx - br, bt, br * 2, bh);
       }
       function drawBall() {
+        var R = ballR, TAU = 6.2832;
+        /* 1) 球体：橙底 + 下缘暗面（光源固定在左上，不随球旋转） */
+        ctx.save();
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, R, 0, TAU); ctx.clip();
+        ctx.fillStyle = BALL_DARK;
+        ctx.fillRect(ball.x - R, ball.y - R, R * 2, R * 2);
+        ctx.beginPath(); ctx.arc(ball.x, ball.y - R * 0.3, R * 1.12, 0, TAU);
+        ctx.fillStyle = BALL_ORANGE; ctx.fill();
+        ctx.restore();
+        /* 2) 球缝：竖线 + 横线 + 两条侧弧（经典篮球纹路，随球滚动） */
         ctx.save();
         ctx.translate(ball.x, ball.y);
         ctx.rotate(ball.spin);
-        ctx.beginPath(); ctx.arc(0, 0, ballR, 0, 6.2832);
-        ctx.fillStyle = SUN; ctx.fill();
-        ctx.strokeStyle = INK; ctx.lineWidth = 3; ctx.stroke();
-        ctx.beginPath(); ctx.moveTo(-ballR, 0); ctx.lineTo(ballR, 0); ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(-ballR * 1.28, 0, ballR * 1.45, -0.62, 0.62);
-        ctx.stroke();
-        ctx.beginPath();
-        ctx.arc(ballR * 1.28, 0, ballR * 1.45, Math.PI - 0.62, Math.PI + 0.62);
-        ctx.stroke();
+        ctx.strokeStyle = INK;
+        ctx.lineWidth = Math.max(2, R * 0.12);
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(0, -R); ctx.lineTo(0, R); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(-R, 0); ctx.lineTo(R, 0); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -R);
+        ctx.quadraticCurveTo(-R * 1.34, 0, 0, R); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(0, -R);
+        ctx.quadraticCurveTo(R * 1.34, 0, 0, R); ctx.stroke();
         ctx.restore();
+        /* 3) 外框 + 高光 */
+        ctx.beginPath(); ctx.arc(ball.x, ball.y, R, 0, TAU);
+        ctx.strokeStyle = INK; ctx.lineWidth = Math.max(2.5, R * 0.15); ctx.stroke();
+        ctx.globalAlpha = 0.38;
+        ctx.fillStyle = CARD;
+        ctx.beginPath();
+        ctx.ellipse(ball.x - R * 0.34, ball.y - R * 0.4, R * 0.26, R * 0.14, -0.6, 0, TAU);
+        ctx.fill();
+        ctx.globalAlpha = 1;
       }
       function drawNet() {
         var t = rimTips();
-        var L = rimW * 0.8, segs = 4, strands = 5;
+        var L = rimW * 0.8, segs = 4, strands = 5, mid = rimMidX();
+        var ey = hoop.y + L;
         var sway = Math.sin(tNow * 7) * hoop.sway * rimW * 0.22;
+        /* 网绳下端落点：整体随 side 镜像，保证左右两侧网形完全一致（不交叉） */
+        function endX(f) { return mid + side * ((f - 0.5) * rimW * 0.6 + sway); }
         ctx.strokeStyle = INK; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
         for (var i = 0; i < strands; i++) {
           var f = i / (strands - 1);
           var sx = t.x1 + (t.x2 - t.x1) * f;
-          var ex = (t.x1 + t.x2) / 2 + (f - 0.5) * rimW * 0.5 + sway;
-          var ey = hoop.y + L;
+          var ex = endX(f);
           ctx.beginPath(); ctx.moveTo(sx, hoop.y + 3);
           for (var s = 1; s <= segs; s++) {
             var u = s / segs;
@@ -842,9 +981,9 @@
           for (var i2 = 0; i2 < strands; i2++) {
             var f2 = i2 / (strands - 1);
             var sx2 = t.x1 + (t.x2 - t.x1) * f2;
-            var ex2 = (t.x1 + t.x2) / 2 + (f2 - 0.5) * rimW * 0.5 + sway;
+            var ex2 = endX(f2);
             var px2 = sx2 + (ex2 - sx2) * Math.pow(u2, 1.15);
-            var py2 = hoop.y + 3 + (hoop.y + L - hoop.y - 3) * u2;
+            var py2 = hoop.y + 3 + (ey - hoop.y - 3) * u2;
             if (i2 === 0) ctx.moveTo(px2, py2); else ctx.lineTo(px2, py2);
           }
           ctx.stroke();
@@ -913,7 +1052,10 @@
             var ddx = sx - tx, ddy = sy - hoop.y, rr2 = (ballR + rimR()) * (ballR + rimR());
             if (ddx * ddx + ddy * ddy < rr2) { hit = true; break; }
           }
-          if (!hit && svx > 0 && sx + ballR > bx - boardR() && sy > boardTop() && sy < boardBot()) hit = true;
+          var brd = boardR();
+          var toBoard = side > 0 ? (svx > 0 && sx + ballR > bx - brd)
+                                 : (svx < 0 && sx - ballR < bx + brd);
+          if (!hit && toBoard && sy > boardTop() && sy < boardBot()) hit = true;
           if (hit) break;
           if (i % 2 === 0) {
             ctx.globalAlpha = Math.max(0.15, 0.85 - i * 0.016);
@@ -957,7 +1099,8 @@
         ctx.font = '700 ' + Math.round(clampFont(12, W * 0.03, 15)) + 'px ' + FONT;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillStyle = INK;
-        ctx.fillText('按住球停顿可任意摆放 · 快速拖拽蓄力投篮', Math.max(ball.x + 120, W * 0.3), ball.y - ballR - 34);
+        var hx = Math.min(Math.max(ball.x + side * 120, W * 0.3), W * 0.7);
+        ctx.fillText('按住球停顿可任意摆放 · 快速拖拽蓄力投篮', hx, ball.y - ballR - 34);
         ctx.globalAlpha = 1;
       }
 
@@ -1061,8 +1204,8 @@
           var ow = W, oh = H;
           initCanvas();
           if (ow > 0 && oh > 0) {
-            hoop.x = Math.min(Math.max(hoop.x * W / ow, W * 0.5), W * 0.9);
-            hoop.y = Math.min(Math.max(hoop.y * H / oh, Math.max(150, H * 0.26)), H * 0.6);
+            hoop.x = clampHoopX(hoop.x * W / ow);
+            hoop.y = clampHoopY(hoop.y * H / oh);
             if (lastShotPos) {
               lastShotPos = resolvePlacement(lastShotPos.x * W / ow, lastShotPos.y * H / oh);
             }
@@ -1085,7 +1228,20 @@
       /* SECTION: buttons */
       btnStart.addEventListener('click', startGame);
       btnAgain.addEventListener('click', startGame);
+      btnSide.addEventListener('click', function () {
+        unlockAudio();
+        if (sideMenu.hidden) openSideMenu(); else closeSideMenu();
+      });
+      for (var si = 0; si < sideOpts.length; si++) {
+        (function (b) {
+          b.addEventListener('click', function () { setSide(+b.dataset.side); });
+        })(sideOpts[si]);
+      }
+      document.addEventListener('pointerdown', function (e) {
+        if (!sideMenu.hidden && !sidePick.contains(e.target)) closeSideMenu();
+      });
       document.addEventListener('keydown', function (e) {
+        if (e.key === 'Escape' && !sideMenu.hidden) { closeSideMenu(); btnSide.focus(); return; }
         if (e.target === btnStart || e.target === btnAgain) return;
         if ((e.key === 'Enter' || e.key === ' ') && (mode === 'ready' || mode === 'over')) {
           if (e.key === ' ') e.preventDefault();
@@ -1095,6 +1251,7 @@
 
       /* SECTION: boot */
       initCanvas();
+      syncSide();
       moveHoop();
       spawnBall();
       requestAnimationFrame(loop);

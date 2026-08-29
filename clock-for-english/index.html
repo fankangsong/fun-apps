@@ -118,14 +118,13 @@
     flex-wrap: wrap; justify-content: center; align-items: flex-start;
   }
 
-  /* 钟面容器：贴纸风格，但保留触摸绘制 */
+  /* 钟面容器：贴纸风格（手势阻断只放画布上，容器不拦页面滚动） */
   .clock-card {
     position: relative; background: var(--card);
     border: 3px solid var(--ink); border-radius: 24px;
     box-shadow: 8px 8px 0 var(--blue);
     padding: clamp(14px, 3vw, 22px);
     transform: rotate(-1deg);
-    touch-action: none;
   }
   #sketch canvas { display: block; touch-action: none; }
   .clock-tip {
@@ -195,6 +194,11 @@
   .chunk:focus-visible { outline: 3px solid var(--blue); outline-offset: 3px; }
   .chunk.active {
     box-shadow: 0 0 0 3px var(--ink), 3px 3px 0 var(--chunkc, var(--ink));
+  }
+  /* 被点亮的语块：加粗墨黑描边 + 上抬，与钟面高亮弧同步 */
+  .chunk.focus {
+    box-shadow: 0 0 0 3px var(--ink), 5px 6px 0 var(--chunkc, var(--ink));
+    transform: rotate(0deg) translateY(-3px);
   }
   .chunk .type-tag {
     display: block; font-size: 9px; font-weight: 700; text-align: center;
@@ -369,6 +373,41 @@ const KIND_HEX = {
 };
 
 /* =====================================================================
+ * 语块 tag → 钟面聚焦区域（声明式映射，新增语块只需在此加一行）
+ * 由 FOCUS[tag](detectType()) 惰性求值，故可引用下方才定义的 S / numWord
+ *   arcs   : [[起分, 止分, 语义色]] —— 复用 sector() 几何，与底图扇形重合
+ *   number : 需高亮的小时数字（1~12）
+ *   hand   : 'min' | 'hour' —— 需加粗的指针
+ *   anchor : 需脉冲的 half / quarter 锚点分钟位
+ *   ring   : 无对应弧时（o'clock / a.m.）改用外圈脉冲环
+ *   label  : 高亮区文案气泡
+ * ===================================================================*/
+const FOCUS = {
+  past:      ()  => ({ arcs:[[0, S.minute, C.past]],
+                       label:`past · 已走 ${S.minute} 分` }),
+  to:        ()  => ({ arcs:[[S.minute, 60, C.to]],
+                       label:`to · 还剩 ${60 - S.minute} 分` }),
+  minute:    tpe => (tpe === 'to' || tpe === 'qto')
+    ? { arcs:[[S.minute, 60, C.to]],  hand:'min',
+        label:`${numWord(60 - S.minute)} 分 = 60 − ${S.minute}` }
+    : { arcs:[[0, S.minute, C.past]], hand:'min',
+        label:`${numWord(S.minute)} 分` },
+  half:      ()  => ({ arcs:[[0, 30, C.min]], anchor:30, hand:'min',
+                       label:'half = 30 分 · 半个钟面' }),
+  quarter:   tpe => (tpe === 'qto')
+    ? { arcs:[[45, 60, C.min]], anchor:45, label:'a quarter = 15 分 · 差一刻' }
+    : { arcs:[[0, 15, C.min]],  anchor:15, label:'a quarter = 15 分' },
+  hour:      ()  => ({ number:S.hour,       hand:'hour', label:`${numWord(S.hour)} 点` }),
+  'next-hour':() => ({ number:S.hour%12+1,  hand:'hour', label:`下一小时 ${numWord(S.hour%12+1)}` }),
+  "o'clock": ()  => ({ ring:C.struct, hand:'min', label:"o'clock 只用于整点" }),
+  ampm:      ()  => ({ ring:C.struct,
+                       label:S.isPM ? 'p.m. = 下午 / 晚上' : 'a.m. = 上午 / 凌晨' })
+};
+const FOCUS_SEC = 2.5;                 // 高亮呼吸时长（秒），末 0.6s 线性淡出
+const FOCUS_FADE = 0.6;
+const REDUCE = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+
+/* =====================================================================
  * 全局状态
  * ===================================================================*/
 const S = {
@@ -380,7 +419,7 @@ const S = {
   teachFlash: {kind:null, t:0},   // 落定后的教学闪烁
   bubble: null,              // 换算气泡 {text, t}
   hourFlash: {num:null, t:0},// 下一小时数字高亮
-  reverseFlash: null         // 反向点击闪烁 {kind, t}
+  focus: null                // 语块反向联动聚焦 {tag, t(秒)}
 };
 
 /* =====================================================================
@@ -462,12 +501,16 @@ function renderPanel(){
       span.style.setProperty('--chunkc', KIND_HEX[c.kind]);
       span.style.setProperty('--chunktilt', (i%2?0.8:-0.8)+'deg');
       span.tabIndex=0;
+      span.dataset.tag=c.tag;                  // 供 markFocusChunk 在重建后重新施加焦点态
+      span.setAttribute('role','button');
+      span.setAttribute('aria-pressed','false');
       span.innerHTML=`${c.text}<span class="type-tag">${c.tag}</span>`;
-      // 反向联动
-      span.onclick=()=>{ S.reverseFlash={kind:c.kind, tag:c.tag, t:60}; };
+      // 反向联动：点击语块 → 高亮钟面对应扇形（互斥切换）
+      span.onclick=()=>toggleFocus(c.tag);
       span.onkeydown=e=>{ if(e.key==='Enter'||e.key===' '){ e.preventDefault(); span.onclick(); } };
       exprEl.appendChild(span);
     });
+    markFocusChunk(exprEl, S.focus ? S.focus.tag : null);  // DOM 已重建，重新点亮
   } else {
     exprEl.innerHTML=`<span class="chunk-locked">
       🔒 当前关卡未解锁此表达（${RULES[type].label}）</span>`;
@@ -496,6 +539,22 @@ function renderHint(type, unlocked){
     : `🔒 当前是 Level ${S.level}，此规则（<b>${RULES[type].label}</b>）尚未解锁。可查看下方顺读法。`;
 }
 
+/* 点击 / Enter / 空格统一入口：互斥切换，再点同一语块取消高亮 */
+function toggleFocus(tag){
+  S.focus = (S.focus && S.focus.tag === tag) ? null : { tag, t: FOCUS_SEC };
+  markFocusChunk(document.getElementById("expr"), S.focus ? S.focus.tag : null);
+}
+
+/* 施加 / 清除语块焦点态（renderPanel 重建 DOM 后必须重跑） */
+function markFocusChunk(exprEl, tag){
+  if(!exprEl) return;
+  exprEl.querySelectorAll(".chunk").forEach(el=>{
+    const on = tag !== null && el.dataset.tag === tag;
+    el.classList.toggle("focus", on);
+    el.setAttribute("aria-pressed", on ? "true" : "false");
+  });
+}
+
 /* =====================================================================
  * p5.js 钟面绘制
  * ===================================================================*/
@@ -518,6 +577,7 @@ function setup(){
   const side=Math.min(SIZE, windowWidth-40, windowHeight-180);
   const cv=createCanvas(side, side);
   cv.parent("sketch");
+  bindPointerDrag(cv.elt);
   recompute();
   renderPanel();
 }
@@ -533,23 +593,39 @@ function draw(){
   const bg = night? [18,24,48] : C.paper;
   background(bg[0],bg[1],bg[2]);
 
-  drawSectors();
+  FOC = currentFocus();      // 每帧只求值一次，供下方四个绘制函数共用
+
+  // 层次：钟面底 → 扇形/高亮弧 → 虚线 → 刻度 → 数字 → 指针（数字与指针始终可读）
+  drawFaceBase();
+  drawSectors();             // 底图扇形
+  drawFocusArcs();           // 语块高亮弧
   drawBoundaryLine();
-  drawFace();
+  drawTicks();
+  drawNumbers();
   drawAnchors();
   drawHands();
   drawTeachEffects();
+  drawFocusLabel();          // 文案气泡：在指针之上，不被遮挡
   drawBubble();
 
-  // 衰减反向闪烁
-  if (S.reverseFlash && S.reverseFlash.t > 0) S.reverseFlash.t--;
+  // 按真实时间衰减（后台标签页切回不残留高亮）
+  if (S.focus){
+    S.focus.t -= deltaTime/1000;
+    if (S.focus.t <= 0){
+      S.focus = null;
+      markFocusChunk(document.getElementById("expr"), null);
+    }
+  }
 }
 
-/* 分区可视化 */
+/* 分区可视化：R-10 是半径，p5 的 arc 收直径，故传 (R-10)*2
+ * （原实现把 R-10 当直径传，扇形半径只有钟面的一半，且被 drawFace 的不透明
+ *   钟面盘整个盖住 —— 青绿 / 珊瑚扇形实际从未显示过） */
 function sector(fromMin,toMin,col,alpha){
   const a1=TWO_PI*(fromMin/60)-HALF_PI, a2=TWO_PI*(toMin/60)-HALF_PI;
+  const d=(R-10)*2;
   fill(col[0],col[1],col[2],alpha); noStroke();
-  arc(CX,CY,R-10,R-10,a1,a2,PIE);
+  arc(CX,CY,d,d,a1,a2,PIE);
 }
 
 function drawSectors(){
@@ -557,21 +633,108 @@ function drawSectors(){
   const unlocked = UNLOCK[type] <= S.level;
   if(!unlocked) return;
 
-  // 反向闪烁增强
-  let boost=0;
-  if (S.reverseFlash && S.reverseFlash.t>0){
-    boost = 60*Math.abs(sin(S.reverseFlash.t*0.2));
-  }
-
+  // 底图扇形保持恒定 alpha，语块高亮统一交给 drawFocusArcs，避免两层脉动叠加
   if (type==="past"||type==="half"||type==="qpast"){
-    sector(0, m===30?30:m, C.past, 70+boost);
+    sector(0, m===30?30:m, C.past, 70);
   } else if (type==="oclock") {
     // 整点光环在 teachEffects 处理
   } else {
     // to, qto
-    sector(m, 60, C.to, 75+boost);
+    sector(m, 60, C.to, 75);
     sector(0, m, [109,103,92], 26); // 灰色已走过弧
   }
+}
+
+/* =====================================================================
+ * 语块 → 钟面聚焦渲染
+ * ===================================================================*/
+let FOC = null;   // 当前帧快照 {tag, cfg, k, pulse}，无聚焦时为 null
+
+function currentFocus(){
+  if (!S.focus || S.focus.t <= 0) return null;
+  const build = FOCUS[S.focus.tag];
+  if (!build) return null;                       // 未收录的 tag 静默跳过
+  const cfg = build(detectType(S.minute));
+  if (!cfg) return null;
+  return {
+    tag: S.focus.tag,
+    cfg,
+    k: Math.min(1, S.focus.t / FOCUS_FADE),      // 末段线性淡出系数
+    pulse: REDUCE ? 1 : 0.7 + 0.3*Math.abs(sin(S.focus.t * 4))
+  };
+}
+
+function drawFocusArcs(){
+  if(!FOC) return;
+  if(UNLOCK[detectType(S.minute)] > S.level) return;   // 未解锁时不叠加高亮
+  const {cfg, k, pulse} = FOC;
+
+  (cfg.arcs || []).forEach(([a0, a1, col]) => {
+    if(a1 <= a0) return;                               // 空弧（如 0 分时的 past）
+    sector(a0, a1, col, (200 + 55*pulse) * k);         // 提升不透明度
+    focusArcStroke(a0, a1, col, k);
+  });
+  if(cfg.ring) focusRing(cfg.ring, k, pulse);
+}
+
+/* 高亮弧的外缘粗描边 + 起止两条半径分隔线（Memphis：大弧彩描边 + 黑描边） */
+function focusArcStroke(a0, a1, col, k){
+  const r = R - 10;
+  const ang = m => TWO_PI*(m/60) - HALF_PI;
+  push();
+  noFill();
+  stroke(col[0],col[1],col[2],255*k); strokeWeight(4); strokeCap(ROUND);
+  beginShape();
+  for(let m=a0; m<=a1; m+=1){ vertex(CX+cos(ang(m))*r, CY+sin(ang(m))*r); }
+  vertex(CX+cos(ang(a1))*r, CY+sin(ang(a1))*r);       // 收尾到精确终点
+  endShape();
+  stroke(C.ink[0],C.ink[1],C.ink[2],220*k); strokeWeight(2.5);
+  [a0, a1].forEach(m => {
+    const a = ang(m);
+    line(CX+cos(a)*R*0.16, CY+sin(a)*R*0.16, CX+cos(a)*r, CY+sin(a)*r);
+  });
+  pop();
+}
+
+/* 无对应弧的结构词（o'clock / a.m.）：钟面外圈脉冲环 */
+function focusRing(col, k, pulse){
+  const q = 1 - Math.max(0, S.focus.t) / FOCUS_SEC;    // 0 → 1
+  const grow = REDUCE ? 0 : q * 0.06;
+  push();
+  noFill();
+  stroke(col[0],col[1],col[2],240*k*pulse); strokeWeight(3 + 3*pulse);
+  circle(CX, CY, (R-8)*2*(1+grow));
+  pop();
+}
+
+/* 高亮区文案气泡：有弧时贴弧中点，无弧时落在钟面下方 */
+function drawFocusLabel(){
+  if(!FOC || !FOC.cfg.label) return;
+  const {cfg, k} = FOC;
+  const arcs = cfg.arcs || [];
+  let bx, by;
+  if(arcs.length){
+    const [a0, a1] = arcs[0];
+    const a = TWO_PI*(((a0+a1)/2)/60) - HALF_PI;
+    bx = CX + cos(a)*(R-10)*0.62;   // 落在扇形外缘与小时数字环之间
+    by = CY + sin(a)*(R-10)*0.62;
+  } else {
+    bx = CX;
+    by = Math.max(26, Math.min(CY + R + 18, height - 26));
+  }
+
+  const col = (arcs.length && arcs[0][2]) || C.min;
+  push();
+  translate(bx, by);
+  textSize(13); textStyle(BOLD);
+  const w = Math.max(120, textWidth(cfg.label) + 28), h = 32;
+  // 贴边时把气泡拉回画布内
+  translate(constrain(0, w/2 + 4 - bx, width - w/2 - 4 - bx), 0);
+  fill(24,34,66,245*k); stroke(col[0],col[1],col[2],255*k); strokeWeight(2);
+  rectMode(CENTER); rect(0,0,w,h,9);
+  noStroke(); fill(C.moon[0],C.moon[1],C.moon[2],255*k);
+  textAlign(CENTER,CENTER); text(cfg.label,0,0);
+  pop();
 }
 
 /* 12-6 分界虚线 */
@@ -581,45 +744,47 @@ function drawBoundaryLine(){
   drawingContext.setLineDash([]);
 }
 
-/* 钟面与刻度 */
-function drawFace(){
+/* 钟面底（不透明圆盘）：必须先画，扇形与高亮弧叠在它之上 */
+function drawFaceBase(){
   const night = S.isPM && S.level>=5;
   const faceCol = night? C.faceN : C.face;
-  const tickCol = night? C.moon : C.ink;
-  const numCol  = night? C.moon : C.ink;
-
-  // 钟面底
   fill(faceCol[0],faceCol[1],faceCol[2]);
   stroke(C.ink[0],C.ink[1],C.ink[2]); strokeWeight(3);
   circle(CX,CY,(R-8)*2);
+}
 
-  // 分钟刻度
+/* 分钟刻度：画在扇形之后，避免被扇形填色糊掉 */
+function drawTicks(){
+  const night = S.isPM && S.level>=5;
+  const tickCol = night? C.moon : C.ink;
   for(let i=0;i<60;i+=5){
     const a=TWO_PI*(i/60)-HALF_PI;
     const r1=R-4, r2=R-16;
     stroke(tickCol[0],tickCol[1],tickCol[2],100); strokeWeight(i%15===0?4:2);
     line(CX+cos(a)*r1,CY+sin(a)*r1, CX+cos(a)*r2,CY+sin(a)*r2);
   }
+}
 
-  // 小时数字（下一小时高亮）
+/* 小时数字（下一小时高亮 + 语块聚焦高亮）*/
+function drawNumbers(){
+  const night = S.isPM && S.level>=5;
+  const numCol  = night? C.moon : C.ink;
   numbers.forEach(nb=>{
     const isNext = (S.hourFlash.num===nb.n && S.hourFlash.t>0);
     if(isNext) S.hourFlash.t--;
 
-    let isReverse = false;
-    if(S.reverseFlash && S.reverseFlash.kind==='hour' && S.reverseFlash.t>0) {
-        isReverse = true;
-    }
+    // 语块聚焦：只高亮对应的那一个数字（原实现不比较 nb.n，会把 12 个数字全染蓝）
+    const isFocus = !!(FOC && FOC.cfg.number === nb.n);
 
-    const sc = isNext ? 1.4+0.1*sin(frameCount*0.3) : 1;
+    const sc = isNext ? 1.4+0.1*sin(frameCount*0.3) : (isFocus ? 1.25 : 1);
     push();
     translate(nb.x,nb.y);
     scale(sc);
-    fill(isNext||isReverse ? C.hour : numCol);
+    fill(isNext||isFocus ? C.hour : numCol);
     noStroke();
     textAlign(CENTER,CENTER);
     textSize(22);
-    textStyle(isNext?BOLD:NORMAL);
+    textStyle(isNext||isFocus ? BOLD : NORMAL);
     text(nb.n,0,0);
     pop();
   });
@@ -631,6 +796,10 @@ function drawAnchors(){
   const anchor=(minPos,icon,col)=>{
     const a=TWO_PI*(minPos/60)-HALF_PI;
     const x=CX+cos(a)*(R-45), y=CY+sin(a)*(R-45);
+    if(FOC && FOC.cfg.anchor === minPos){        // 语块聚焦：锚点脉冲环
+      push(); noFill(); stroke(col[0],col[1],col[2],240*FOC.k*FOC.pulse);
+      strokeWeight(3); circle(x,y,30 + 8*FOC.pulse); pop();
+    }
     fill(col[0],col[1],col[2]); noStroke(); ellipse(x,y,22,22);
     fill(C.ink[0],C.ink[1],C.ink[2]); textAlign(CENTER,CENTER); textSize(11);
     text(icon,x,y);
@@ -647,9 +816,10 @@ function drawHands(){
   const hA=TWO_PI*(((S.hour%12)+S.minute/60)/12)-HALF_PI;
 
   // 分针
+  const mFocus = !!(FOC && FOC.cfg.hand === 'min');
   let mColor = night? C.moon : C.ink;
-  if(S.reverseFlash && S.reverseFlash.kind==='min' && S.reverseFlash.t>0) mColor = C.min;
-  stroke(mColor[0],mColor[1],mColor[2]); strokeWeight(4); strokeCap(ROUND);
+  if(mFocus) mColor = C.min;
+  stroke(mColor[0],mColor[1],mColor[2]); strokeWeight(mFocus?7:4); strokeCap(ROUND);
   line(CX,CY, CX+cos(mA)*(R-25), CY+sin(mA)*(R-25));
 
   // 拖拽热区提示
@@ -658,10 +828,13 @@ function drawHands(){
     circle(CX+cos(mA)*(R-25), CY+sin(mA)*(R-25), 30);
   }
 
-  // 时针
-  let hColor = C.hour;
-  if(S.reverseFlash && S.reverseFlash.kind==='hour' && S.reverseFlash.t>0) hColor = [58,134,255];
-  stroke(hColor[0],hColor[1],hColor[2]); strokeWeight(6);
+  // 时针（原实现聚焦时赋同色 [58,134,255]，与 C.hour 完全相同故无视觉效果）
+  const hFocus = !!(FOC && FOC.cfg.hand === 'hour');
+  if(hFocus){                                  // 半透明 halo，保证聚焦可见
+    stroke(C.hour[0],C.hour[1],C.hour[2],70*FOC.k); strokeWeight(14);
+    line(CX,CY, CX+cos(hA)*(R-65), CY+sin(hA)*(R-65));
+  }
+  stroke(C.hour[0],C.hour[1],C.hour[2]); strokeWeight(hFocus?8:6);
   line(CX,CY, CX+cos(hA)*(R-65), CY+sin(hA)*(R-65));
 
   // 中心点
@@ -677,7 +850,7 @@ function drawTeachEffects(){
     S.teachFlash.t--;
     const p=1-S.teachFlash.t/30;
     noFill(); stroke(C.ink[0],C.ink[1],C.ink[2],220*(1-p)); strokeWeight(4*(1-p)+1);
-    circle(CX,CY,(R-8)*(1+p*0.15));
+    circle(CX,CY,(R-8)*2*(1+p*0.15));   // circle 收直径：×2 才是钟面外的光环
   }
 
   // past/to 扇形呼吸闪烁
@@ -709,12 +882,55 @@ function drawBubble(){
 }
 
 /* =====================================================================
- * 交互：拖拽与防抖
+ * 交互：环形热区拖分针（原生 Pointer Events，只绑在画布元素上）
+ * 不能用 p5 全局 touch*：它们监听整页触摸且 return false 会
+ * preventDefault 掉滚动 —— iPad 上页面将无法滑动、任何区域触摸都会
+ * 转动时钟。画布手势阻断由 CSS touch-action:none 负责，页面其余区域
+ * 保持原生滚动。
  * ===================================================================*/
-function touchOrMousePos(){
-  if(mouseIsPressed) return {x:mouseX,y:mouseY};
-  if(touches.length) return {x:touches[0].x,y:touches[0].y};
-  return null;
+const pointers = new Map();      // pointerId -> 画布内坐标
+let dragPointerId = null;
+
+function canvasXY(cv, e){
+  const r = cv.getBoundingClientRect();   // 页面可滚动，必须按画布实时位置映射
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+
+function inRing(p){
+  const d = dist(p.x, p.y, CX, CY);
+  return d > R * 0.3 && d < R * 1.1;      // 环形拖拽热区
+}
+
+function applyMinute(p){
+  const m = posToMinute(p.x, p.y);
+  if(m !== S.minute){
+    S.minute = m;
+    onTimeChanged();
+  }
+}
+
+function bindPointerDrag(cv){
+  cv.addEventListener('pointerdown', (e) => {
+    const p = canvasXY(cv, e);
+    pointers.set(e.pointerId, p);
+    try { cv.setPointerCapture(e.pointerId); } catch (_) { } // 指针已失效时抛错，不必中断按下逻辑
+    if(!inRing(p)) return;                // 热区外不起拖
+    S.dragging = true; dragPointerId = e.pointerId;
+    applyMinute(p);
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if(!S.dragging || e.pointerId !== dragPointerId) return; // 只认起拖的那根手指
+    applyMinute(canvasXY(cv, e));         // 起拖后跟随手指角度，出环不中断
+  });
+  const release = (e) => {                // up / cancel 对称清理
+    pointers.delete(e.pointerId);
+    if(e.pointerId === dragPointerId){
+      dragPointerId = null;
+      endDrag();
+    }
+  };
+  cv.addEventListener('pointerup', release);
+  cv.addEventListener('pointercancel', release);
 }
 
 function posToMinute(x,y){
@@ -722,26 +938,6 @@ function posToMinute(x,y){
   if(a<0) a+=TWO_PI;
   return round((a/TWO_PI)*60/5)*5 % 60; // 吸附到 5 分钟
 }
-
-function tryDrag(){
-  const p=touchOrMousePos();
-  if(!p) return;
-  const d=dist(p.x,p.y,CX,CY);
-  if(d>R*0.3 && d<R*1.1){ // 环形拖拽热区
-    const newMin=posToMinute(p.x,p.y);
-    if(newMin!==S.minute){
-      S.minute=newMin;
-      onTimeChanged();
-    }
-  }
-}
-
-function touchStarted(){ tryDrag(); return false; }
-function touchMoved(){ if(S.dragging||touches.length){S.dragging=true; tryDrag();} return false; }
-function touchEnded(){ endDrag(); }
-function mousePressed(){ tryDrag(); }
-function mouseDragged(){ S.dragging=true; tryDrag(); }
-function mouseReleased(){ endDrag(); }
 
 function endDrag(){
   if(!S.dragging) return;
@@ -751,6 +947,7 @@ function endDrag(){
 
 /* 拖动中：静默刷新 */
 function onTimeChanged(){
+  S.focus = null;                       // 时间已变，旧的高亮弧段不再成立
   renderPanel();
   if(S.settleTimer) clearTimeout(S.settleTimer);
   S.bubble=null;
@@ -798,6 +995,7 @@ function activateChunksSequentially(){
  * ===================================================================*/
 document.getElementById("level").onchange=e=>{
   S.level=+e.target.value;
+  S.focus=null;                         // 换关卡后语块构成变了，清掉旧高亮
   document.getElementById("levelDesc").textContent=LEVEL_DESC[S.level];
   renderPanel();
 };
