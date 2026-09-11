@@ -266,13 +266,16 @@ const State = (function () {
   // ------------------------------------------------------------------
   // 帧操作
   // ------------------------------------------------------------------
-  function addFrame(copyCurrent) {
+  // copyFrom: true=复制当前帧并插到其后；number=复制该索引帧并插到其后；false=空白帧插到当前帧后
+  function addFrame(copyFrom) {
     if (S.frames.length >= CONFIG.maxFrames) return -1;
     pushUndo();
     var f = newFrame(S.w, S.h);
-    if (copyCurrent) f.set(S.frames[S.current]);
-    S.frames.splice(S.current + 1, 0, f);
-    S.current += 1;
+    var isIdx = typeof copyFrom === "number";
+    var at = isIdx ? copyFrom : S.current;
+    if ((copyFrom === true || isIdx) && S.frames[at]) f.set(S.frames[at]);
+    S.frames.splice(at + 1, 0, f);
+    S.current = at + 1;
     emit('frames');
     emit('frame');
     emit('pixels');

@@ -223,8 +223,15 @@ const App = (function () {
     afterChange(false);
   }
 
-  function deleteFrame() {
-    if (!State.deleteFrame()) { UI.toast(CONFIG.text.needOneFrame); return; }
+  function duplicateFrame(index) {
+    var i = State.addFrame(index);
+    if (i < 0) { UI.toast(CONFIG.text.maxFrames); return; }
+    UI.toast('已复制该帧');
+    afterChange(false);
+  }
+
+  function deleteFrame(index) {
+    if (!State.deleteFrame(index)) { UI.toast(CONFIG.text.needOneFrame); return; }
     UI.toast(CONFIG.text.deleted);
     afterChange(false);
   }
@@ -282,6 +289,7 @@ const App = (function () {
     undo: undo,
     redo: redo,
     addFrame: addFrame,
+    duplicateFrame: duplicateFrame,
     deleteFrame: deleteFrame,
     clearFrame: clearFrame,
     moveFrameTo: moveFrameTo,

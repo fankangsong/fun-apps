@@ -64,24 +64,12 @@
       border-bottom: var(--line) solid var(--ink);
       padding-top: env(safe-area-inset-top, 0);
     }
-    .marquee {
-      overflow: hidden; background: var(--ink); color: var(--sun);
-      font-size: 11px; font-weight: 700; letter-spacing: .3em; text-transform: uppercase;
-      padding: 4px 0;
-      pointer-events: none;
-    }
-    .marquee .in { display: inline-block; white-space: nowrap; animation: mq 40s linear infinite; }
-    @keyframes mq { to { transform: translateX(-50%); } }
-
     .ops {
       display: flex; align-items: center; gap: 8px;
       padding: 6px 12px;
       padding-left: calc(12px + env(safe-area-inset-left, 0));
       padding-right: calc(12px + env(safe-area-inset-right, 0));
-      overflow-x: auto; overflow-y: hidden;
-      scrollbar-width: none;
     }
-    .ops::-webkit-scrollbar { display: none; }
     .logo {
       flex: 0 0 auto; margin-right: 4px;
       font-size: clamp(14px, 2.6vw, 17px); font-weight: 900; letter-spacing: .04em;
@@ -119,6 +107,32 @@
     .btn[disabled] { opacity: .42; pointer-events: none; }
     .btn-sm { min-height: 44px; padding: 0 12px; font-size: 12.5px; }
     .btn b { font-weight: 900; text-decoration: underline; text-underline-offset: 3px; }
+
+    /* 文件下拉菜单 */
+    .file-menu { position: relative; flex: 0 0 auto; }
+    .file-menu .btn svg {
+      width: 14px; height: 14px;
+      fill: none; stroke: currentColor; stroke-width: 3;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .file-menu .btn[aria-expanded="true"] svg { transform: rotate(180deg); }
+    .menu-pop {
+      position: absolute; top: calc(100% + 8px); left: 0; z-index: 50;
+      min-width: 190px; padding: 6px;
+      display: flex; flex-direction: column; gap: 5px;
+      background: var(--card);
+      border: 2px solid var(--ink); border-radius: 14px;
+      box-shadow: 5px 5px 0 var(--ink);
+    }
+    .menu-pop[hidden] { display: none; }
+    .menu-pop .btn {
+      width: 100%; justify-content: flex-start; gap: 8px;
+      min-height: 44px; padding: 0 14px;
+      border-radius: 10px; box-shadow: none;
+    }
+    @media (hover: hover) { .menu-pop .btn:hover { transform: none; box-shadow: none; background: var(--sun); } }
+    .menu-pop .btn:active { transform: none; box-shadow: none; }
+    .menu-pop button.only-narrow { display: none; }
 
     /* ===================== 工作台骨架 ===================== */
     .studio {
@@ -185,20 +199,21 @@
     }
     .icon-btn[aria-pressed="true"] .kb { color: #16161690; }
 
-    /* 笔刷粗细：下拉选择（省空间，iPad 上走系统选择器） */
-    #brushSelect {
-      width: 100%; min-height: 44px; display: block;
-      -webkit-appearance: none; appearance: none;
-      background-color: var(--paper); color: var(--ink);
+    /* 笔刷粗细：可视化网格（按 px 尺寸绘制圆点） */
+    .brush-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
+    .brush-grid .chip {
+      min-height: 44px; padding: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--card);
       border: 2px solid var(--ink); border-radius: 10px;
-      font-family: inherit; font-size: 13px; font-weight: 900;
-      padding: 0 24px 0 9px; cursor: pointer; touch-action: manipulation;
-      background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23161616' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'><path d='M6 9l6 6 6-6'/></svg>");
-      background-repeat: no-repeat;
-      background-position: right 5px center;
-      background-size: 13px 13px;
+      cursor: pointer; touch-action: manipulation;
+      transition: transform .14s var(--ease), background .14s;
     }
-    #brushSelect:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
+    .brush-grid .chip .dot {
+      display: block; border-radius: 50%; background: var(--ink); flex: 0 0 auto;
+    }
+    .brush-grid .chip[aria-pressed="true"] { background: var(--sun); transform: translateY(2px); }
+    .brush-grid .chip:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
     /* 绘制开关：自适应换行（右栏宽度足够放两列） */
     .chip-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(102px, 1fr)); gap: 6px; }
     .chip {
@@ -219,17 +234,16 @@
       position: relative; flex: 1 1 auto; min-width: 0; min-height: 0; overflow: hidden;
       background: var(--paper);
     }
-    /* 底部帧条：操作按钮竖排在左，帧缩略图横向滚动 */
+    /* 底部帧条：帧缩略图横向滚动，右端帧计数 */
     .framebar {
-      flex: 0 0 auto;
+      flex: 0 0 auto; min-height: 99px;
       display: flex; align-items: center; gap: 10px;
-      min-height: 156px;
       padding: 6px calc(10px + env(safe-area-inset-right, 0)) 6px calc(10px + env(safe-area-inset-left, 0));
       background: var(--card);
       border-top: var(--line) solid var(--ink);
     }
-    .frame-ops { flex: 0 0 auto; display: flex; flex-direction: column; gap: 5px; }
-    .framebar .frames { flex: 1 1 auto; min-width: 0; padding-bottom: 0; }
+    /* 顶部留 3px：选中帧上浮 2px 不被 overflow-y:hidden 裁掉 */
+    .framebar .frames { flex: 1 1 auto; min-width: 0; padding-top: 3px; padding-bottom: 0; }
     .frame-tail {
       flex: 0 0 auto;
       display: flex; flex-direction: column; align-items: center; gap: 7px;
@@ -238,28 +252,9 @@
       flex: 0 0 auto; font-size: 10.5px; font-weight: 900;
       letter-spacing: .1em; color: var(--dim); white-space: nowrap;
     }
-    /* 帧操作按钮：图标 + 文字 */
-    .fop {
-      display: inline-flex; align-items: center; gap: 6px;
-      min-height: 44px; padding: 0 11px;
-      background: var(--paper); color: var(--ink);
-      border: 2px solid var(--ink); border-radius: 10px;
-      box-shadow: 0 2px 0 var(--ink);
-      font-family: inherit; font-size: 12px; font-weight: 900; letter-spacing: .04em;
-      cursor: pointer; touch-action: manipulation; white-space: nowrap;
-      transition: transform .14s var(--ease), box-shadow .14s var(--ease);
-    }
-    .fop svg {
-      width: 17px; height: 17px; flex: 0 0 auto;
-      fill: none; stroke: currentColor; stroke-width: 2;
-      stroke-linecap: round; stroke-linejoin: round;
-    }
-    .fop:active { transform: translateY(2px); box-shadow: 0 0 0 var(--ink); }
-    .fop:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
-    .fop[disabled] { opacity: .38; pointer-events: none; }
-    .fop.danger { background: var(--coral); }
     /* 用元素+类提高特异性，避免被后面 .mini 的 display 覆盖 */
     button.only-narrow { display: none; }
+    button.only-wide { display: inline-flex; }
     .stage canvas#board {
       position: absolute; inset: 0; z-index: 2;
       display: block; width: 100%; height: 100%;
@@ -409,6 +404,53 @@
       font-size: 9px; font-weight: 900; line-height: 1;
       padding: 2px 4px; border-radius: 5px;
     }
+    /* 删除角标：hover / 键盘聚焦缩略图时出现；触屏设备常显 */
+    .frame .del {
+      position: absolute; top: 3px; right: 3px;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--coral); color: var(--ink);
+      border: 2px solid var(--ink); border-radius: 9px;
+      font-size: 15px; font-weight: 900; line-height: 1;
+      opacity: 0; transform: scale(.6);
+      transition: opacity .12s var(--ease), transform .12s var(--ease);
+    }
+    .frame:hover .del, .frame:focus-visible .del { opacity: 1; transform: none; }
+    @media (hover: none) { .frame .del { opacity: 1; transform: none; } }
+    /* 复制角标：hover 缩略图时出现在左上角；触屏设备常显 */
+    .frame .dup {
+      position: absolute; top: 3px; left: 3px;
+      width: 32px; height: 32px;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--blue); color: var(--ink);
+      border: 2px solid var(--ink); border-radius: 9px;
+      opacity: 0; transform: scale(.6);
+      transition: opacity .12s var(--ease), transform .12s var(--ease);
+    }
+    .frame .dup svg {
+      width: 18px; height: 18px;
+      fill: none; stroke: currentColor; stroke-width: 2;
+      stroke-linecap: round; stroke-linejoin: round;
+    }
+    .frame:hover .dup, .frame:focus-visible .dup { opacity: 1; transform: none; }
+    @media (hover: none) { .frame .dup { opacity: 1; transform: none; } }
+    /* 帧列表末尾的新建磁贴 */
+    .add-tile {
+      flex: 0 0 auto; width: 76px; height: 76px;
+      display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px;
+      background: var(--paper); color: var(--dim);
+      border: 2px dashed var(--ink); border-radius: 10px;
+      font-family: inherit; font-size: 11px; font-weight: 900; letter-spacing: .08em;
+      cursor: pointer; touch-action: manipulation;
+      transition: transform .14s var(--ease), background .14s var(--ease);
+    }
+    .add-tile svg {
+      width: 20px; height: 20px;
+      fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round;
+    }
+    @media (hover: hover) { .add-tile:hover { background: var(--sun); color: var(--ink); } }
+    .add-tile:active { transform: translateY(2px); }
+    .add-tile:focus-visible { outline: 3px solid var(--blue); outline-offset: 2px; }
     .frame[aria-pressed="true"] {
       background: var(--sun);
       box-shadow: 0 0 0 3px var(--sun) inset, 3px 3px 0 var(--ink);
@@ -482,6 +524,8 @@
       .preview-card .pc-play { min-height: 44px; font-size: 11px; }
       .corner { display: none; }
       button.only-narrow { display: inline-flex; }
+      .menu-pop button.only-narrow { display: flex; }
+      button.only-wide { display: none; } /* 窄屏隐藏顶栏快捷键：底部工具栏已有撤销/重做 */
 
       /* 底部帧条贴在工具栏之上；窄屏改为横排图标按钮 */
       .framebar {
@@ -490,9 +534,7 @@
         min-height: 62px; gap: 6px;
         padding: 4px calc(8px + env(safe-area-inset-right, 0)) 4px calc(8px + env(safe-area-inset-left, 0));
       }
-      .frame-ops, .frame-tail { flex-direction: row; gap: 4px; }
-      .fop { padding: 0 10px; }
-      .fop span { display: none; }
+      .frame-tail { display: none; } /* 窄屏帧计数藏在抽屉 HUD 中 */
       .framebar-info { display: none; }
       .stage { padding-bottom: calc(var(--toolbar-h) + 62px + env(safe-area-inset-bottom, 0)); }
       .ops { flex-wrap: nowrap; }
@@ -512,6 +554,7 @@
       .logo { font-size: 13px; padding: 6px 9px; }
       .btn-sm { padding: 0 10px; font-size: 12px; }
       .frame { width: 68px; height: 68px; }
+      .add-tile { width: 68px; height: 68px; }
     }
 
     /* ===================== 弹层 ===================== */
@@ -615,21 +658,30 @@
     .toast.on { opacity: 1; transform: translateX(-50%) translateY(0); }
 
     @media (prefers-reduced-motion: reduce) {
-      .marquee .in, .sheet, .btn, .chip, .icon-btn, .frame, .toast { animation: none !important; transition: none !important; }
+      .sheet, .btn, .chip, .icon-btn, .frame, .toast { animation: none !important; transition: none !important; }
     }
   </style>
 </head>
 <body>
   <!-- ===================== 顶栏 ===================== -->
   <header class="topbar">
-    <div class="marquee" aria-hidden="true"><div class="in" id="mq"></div></div>
     <div class="ops">
       <span class="logo">像素画板 <b>PIXEL</b></span>
-      <button class="btn btn-sm" id="btnSize" title="选择画布尺寸">画布 <b id="sizeLabel">32×32</b></button>
-      <button class="btn btn-sm ghost" id="btnImport" title="导入图片（像素化取样）或工程文件">导入</button>
-      <button class="btn btn-sm pink" id="btnExport" title="导出 PNG / GIF / 雪碧图">导出</button>
-      <button class="btn btn-sm ghost" id="btnHelp" title="手势与快捷键">手势 · 快捷键</button>
-      <button class="btn btn-sm pink only-narrow" id="btnDrawer" title="打开颜色与动画面板">面板</button>
+      <div class="file-menu">
+        <button class="btn btn-sm" id="btnFileMenu" aria-haspopup="true" aria-expanded="false" title="文件菜单">
+          文件 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>
+        </button>
+        <div class="menu-pop" id="fileMenuPop" hidden>
+          <button class="btn btn-sm" id="btnSize" title="选择画布尺寸">画布 <b id="sizeLabel">32×32</b></button>
+          <button class="btn btn-sm ghost" id="btnImport" title="导入图片（像素化取样）或工程文件">导入</button>
+          <button class="btn btn-sm pink" id="btnExport" title="导出 PNG / GIF / 雪碧图">导出</button>
+          <button class="btn btn-sm ghost" id="btnHelp" title="手势与快捷键">手势 · 快捷键</button>
+          <button class="btn btn-sm pink only-narrow" id="btnDrawer" title="打开颜色与动画面板">面板</button>
+        </div>
+      </div>
+      <button class="btn btn-sm ghost only-wide" id="btnQuickUndo" title="撤销 · Ctrl+Z">撤销</button>
+      <button class="btn btn-sm ghost only-wide" id="btnQuickRedo" title="重做 · Ctrl+Shift+Z">重做</button>
+      <button class="btn btn-sm coral only-wide" id="btnQuickClear" title="清空当前画布内容（可撤销）">清空</button>
       <span class="save" id="saveState">已保存到本机</span>
     </div>
   </header>
@@ -643,7 +695,7 @@
       </div>
       <div class="sw">
         <p class="lbl">笔刷</p>
-        <select id="brushSelect" aria-label="笔刷粗细"></select>
+        <div class="brush-grid" id="brushGrid" role="group" aria-label="笔刷粗细"></div>
       </div>
     </aside>
 
@@ -657,29 +709,13 @@
           <canvas id="preview" width="96" height="96" aria-label="动画实时预览"></canvas>
           <button class="pc-play" id="btnPlay" aria-label="播放或暂停动画">▶ 播放</button>
         </div>
-        <div class="corner corner-l" aria-hidden="true">fun apps society · est. 2026</div>
-        <div class="corner corner-r" aria-hidden="true">memphis vibes · 画一笔 · nº 09</div>
       </section>
 
-      <!-- 底部帧条：操作按钮固定在左，帧缩略图横向滚动 -->
+      <!-- 底部帧条：帧缩略图横向滚动（末尾新建磁贴），右侧帧计数 -->
       <div class="framebar">
-        <div class="frame-ops">
-          <button class="fop" id="btnAddFrame" title="新建空白帧" aria-label="新建空白帧">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span>新建</span>
-          </button>
-          <button class="fop" id="btnDupFrame" title="复制当前帧" aria-label="复制当前帧">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="8.5" y="8.5" width="11" height="11" rx="2"/><path d="M5.5 15.5V6.5a1 1 0 0 1 1-1h9"/></svg><span>复制</span>
-          </button>
-          <button class="fop" id="btnClearFrame" title="清空当前帧内容（可撤销）" aria-label="清空当前帧内容">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4.5" y="4.5" width="15" height="15" rx="2"/><path d="M9 9l6 6M15 9l-6 6"/></svg><span>清空</span>
-          </button>
-        </div>
         <div class="frames" id="frameList"></div>
         <div class="frame-tail">
           <b class="framebar-info" id="frameCount">1 帧</b>
-          <button class="fop danger" id="btnDelFrame" title="删除当前帧" aria-label="删除当前帧">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 7.5h14M10 7.5V5h4v2.5M7.5 7.5l1 11.5h7l1-11.5"/></svg><span>删除</span>
-          </button>
         </div>
       </div>
     </div>
@@ -866,12 +902,6 @@
   <input type="file" id="fileImport" accept="image/*" hidden>
   <input type="file" id="fileProject" accept=".json,application/json" hidden>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-
-  <script>
-    /* SECTION: marquee */
-    document.getElementById('mq').textContent =
-      'PIXEL STUDIO · 像素画板 · 一笔一像素 · 画完让它动起来 · 离线可用 · 双击即玩 · '.repeat(12);
-  </script>
 
   <!-- 按依赖顺序加载：config -> state -> tools -> render -> view -> input -> export -> ui -> main -->
   <script src="config.js"></script>
